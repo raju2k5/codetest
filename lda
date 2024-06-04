@@ -3,15 +3,24 @@ import json
 def lambda_handler(event, context):
     if event.get('first_attempt', True):
         # Simulate an exception on the first attempt
-        raise Exception("First attempt exception")
+        raise Exception("First attempt exception in Task1")
     else:
         return {
             'statusCode': 200,
-            'body': json.dumps('Lambda function executed successfully!')
+            'body': json.dumps('Task1 executed successfully!')
         }
+-----------------------------------------------------------------
 
+import json
+
+def lambda_handler(event, context):
+    return {
+        'statusCode': 200,
+        'body': json.dumps('Task2 executed successfully!')
+    }
 
 ===========================================
+
 {
   "Comment": "A simple AWS Step Functions state machine with two tasks",
   "StartAt": "Task1",
