@@ -1,53 +1,27 @@
-import json
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
 
-def lambda_handler(event, context):
-    if event.get('first_attempt', True):
-        # Simulate an exception on the first attempt
-        raise Exception("First attempt exception in Task1")
-    else:
-        return {
-            'statusCode': 200,
-            'body': json.dumps('Task1 executed successfully!')
-        }
------------------------------------------------------------------
+@Component
+@ConfigurationProperties(prefix = "myapp")
+public class MyAppProperties {
+    
+    private String greeting;
+    private String name;
 
-import json
-
-def lambda_handler(event, context):
-    return {
-        'statusCode': 200,
-        'body': json.dumps('Task2 executed successfully!')
+    // getters and setters
+    public String getGreeting() {
+        return greeting;
     }
 
-===========================================
-
-{
-  "Comment": "A simple AWS Step Functions state machine with two tasks",
-  "StartAt": "Task1",
-  "States": {
-    "Task1": {
-      "Type": "Task",
-      "Resource": "arn:aws:lambda:REGION:ACCOUNT_ID:function:FUNCTION_NAME_1",
-      "Retry": [
-        {
-          "ErrorEquals": ["States.ALL"],
-          "IntervalSeconds": 5,
-          "MaxAttempts": 3
-        }
-      ],
-      "Next": "Task2"
-    },
-    "Task2": {
-      "Type": "Task",
-      "Resource": "arn:aws:lambda:REGION:ACCOUNT_ID:function:FUNCTION_NAME_2",
-      "Retry": [
-        {
-          "ErrorEquals": ["States.ALL"],
-          "IntervalSeconds": 5,
-          "MaxAttempts": 3
-        }
-      ],
-      "End": true
+    public void setGreeting(String greeting) {
+        this.greeting = greeting;
     }
-  }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
 }
