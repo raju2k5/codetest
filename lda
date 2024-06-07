@@ -14,3 +14,21 @@ public class MyComponent {
         System.out.println("Property 1: " + myAppProperties.getProperty1());
         System.out.println("Property 2: " + myAppProperties.getProperty2());
     }
+
+
+
+
+Environment env = app.run(args).getEnvironment();
+        String[] activeProfiles = env.getActiveProfiles();
+        System.out.println("Active profiles: " + String.join(",", activeProfiles));
+
+
+ // Getters and setters
+    public String getProperty1() {
+        return property1;
+    }
+
+    public void setProperty1(String property1) {
+        this.property1 = property1;
+    }
+
