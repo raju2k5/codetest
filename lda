@@ -1,14 +1,16 @@
-I wanted to take a moment to express my sincere gratitude for your leadership and guidance during your time here. Your support has been invaluable. 
-Your strategic vision and mentorship have played a significant role in our team's success, Your dedication to excellence has truly inspired us all. 
-As you move on to new opportunities, I want to wish you all the best. Your leadership will be greatly missed, 
-and I have no doubt that you will continue to achieve great things in your future endeavors.
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 
-Please know that my door is always open if you ever need any assistance or advice in the future. 
-Thank you once again for everything, and I hope our paths cross again someday.
+@Component
+public class MyComponent {
+    private final MyAppProperties myAppProperties;
 
+    @Autowired
+    public MyComponent(MyAppProperties myAppProperties) {
+        this.myAppProperties = myAppProperties;
+    }
 
-Honoring Your Impact: 
-"Thank You for Guiding Us: Farewell to Our Senior Manager"
-"Wishing You Well: Farewell and Appreciation"
-"A Tribute to Your Leadership: Farewell Message"
-"Saying Goodbye with Gratitude: Farewell to Our Senior Mentor"
+    public void doSomething() {
+        System.out.println("Property 1: " + myAppProperties.getProperty1());
+        System.out.println("Property 2: " + myAppProperties.getProperty2());
+    }
