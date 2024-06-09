@@ -1,34 +1,69 @@
-import org.springframework.beans.factory.annotation.Autowired;
+
+
+Injecting properties from an application.yml file in a Spring Boot application is a common task. Spring Boot automatically loads properties from application.properties or application.yml files in the classpath. Here’s how you can inject properties from an application.yml file into your Spring Boot application:
+
+Create application.yml: Create a file named application.yml in the src/main/resources directory of your Spring Boot project. You can define properties in YAML format.
+
+yaml
+Copy code
+myapp:
+  name: My Spring Boot App
+  version: 1.0
+Create a Configuration Class: You need to create a configuration class to bind the properties defined in the application.yml file to a Java object. You can use the @ConfigurationProperties annotation for this purpose.
+
+java
+Copy code
+import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 @Component
-public class MyComponent {
+@ConfigurationProperties("myapp")
+public class MyAppProperties {
+    private String name;
+    private String version;
+
+    // Getters and setters
+    // Remember to generate getters and setters for the properties
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getVersion() {
+        return version;
+    }
+
+    public void setVersion(String version) {
+        this.version = version;
+    }
+}
+Use the Properties: Now, you can use the MyAppProperties class in your Spring components, such as services or controllers, to access the properties defined in the application.yml file.
+
+java
+Copy code
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+@Service
+public class MyService {
     private final MyAppProperties myAppProperties;
 
     @Autowired
-    public MyComponent(MyAppProperties myAppProperties) {
+    public MyService(MyAppProperties myAppProperties) {
         this.myAppProperties = myAppProperties;
     }
 
-    public void doSomething() {
-        System.out.println("Property 1: " + myAppProperties.getProperty1());
-        System.out.println("Property 2: " + myAppProperties.getProperty2());
+    public void printProperties() {
+        System.out.println("App Name: " + myAppProperties.getName());
+        System.out.println("App Version: " + myAppProperties.getVersion());
     }
+}
+Run the Application: Run your Spring Boot application. Spring Boot will automatically load the properties from the application.yml file and inject them into the MyAppProperties bean.
+
+That’s it! Now you have successfully injected properties from the application.yml file into your Spring Boot application. You can access these properties throughout your application using the MyAppProperties bean.
 
 
-
-
-Environment env = app.run(args).getEnvironment();
-        String[] activeProfiles = env.getActiveProfiles();
-        System.out.println("Active profiles: " + String.join(",", activeProfiles));
-
-
- // Getters and setters
-    public String getProperty1() {
-        return property1;
-    }
-
-    public void setProperty1(String property1) {
-        this.property1 = property1;
-    }
 
