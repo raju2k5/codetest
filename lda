@@ -1,14 +1,63 @@
-Leadership Excellence:
-"I want to recognize [Manager's Name] for their exceptional leadership skills. They consistently inspire our team to perform at their best and lead by example. Their ability to set clear goals, provide guidance, and support our professional growth has been instrumental in our success. Thank you for your outstanding leadership!"
+import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.model.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
 
-Outstanding Team Building:
-"I would like to nominate [Manager's Name] for their outstanding team-building efforts. They have created a supportive and collaborative work environment where every team member feels valued and empowered. Their initiatives to foster teamwork, encourage open communication, and celebrate achievements have significantly strengthened our team dynamics. Thank you for bringing out the best in us!"
+import java.io.InputStream;
 
-Innovator of the Year:
-"I'm nominating [Manager's Name] for the 'Innovator of the Year' award for their creative approach to problem-solving and continuous pursuit of excellence. They consistently challenge the status quo, encourage innovative thinking, and empower us to explore new ideas. Their forward-thinking mindset has led to several successful initiatives that have positively impacted our team and the organization as a whole. Thank you for your innovative leadership!"
+@Service
+public class S3Service {
 
-Results-Oriented:
-"I want to recognize [Manager's Name] for their exceptional dedication to achieving results. They have a track record of consistently delivering on targets and driving performance excellence within our team. Their strategic planning, attention to detail, and ability to rally the team around common goals have been key factors in our success. Thank you for your relentless pursuit of excellence!"
+    @Autowired
+    private AmazonS3 amazonS3;
 
-Employee Development:
-"I'm nominating [Manager's Name] for their unwavering commitment to employee development. They prioritize our growth and well-being, providing mentorship, guidance, and opportunities for learning and advancement. Their investment in our professional development has not only enhanced our skills but also strengthened our loyalty and commitment to the team. Thank you for your dedication to our growth and success!"
+    public void uploadFile(String bucketName, String key, InputStream inputStream, ObjectMetadata metadata) {
+        amazonS3.putObject(new PutObjectRequest(bucketName, key, inputStream, metadata)
+                .withCannedAcl(CannedAccessControlList.PublicRead));
+    }
+
+    public S3Object downloadFile(String bucketName, String key) {
+        return amazonS3.getObject(new GetObjectRequest(bucketName, key));
+    }
+}
+
+
+----------------------------
+
+
+import com.amazonaws.services.s3.model.S3Object;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+
+@RestController
+@RequestMapping("/files")
+public class FileController {
+
+    @Autowired
+    private S3Service s3Service;
+
+    @PostMapping("/upload")
+    public ResponseEntity<String> uploadFile(@RequestParam("file") MultipartFile file) {
+        try {
+            s3Service.uploadFile("YOUR_BUCKET_NAME", file.getOriginalFilename(), file.getInputStream(), new ObjectMetadata());
+            return ResponseEntity.ok("File uploaded successfully!");
+        } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Failed to upload file.");
+        }
+    }
+
+    @GetMapping("/download/{fileName}")
+    public ResponseEntity<byte[]> downloadFile(@PathVariable String fileName) {
+        try {
+            S3Object file = s3Service.downloadFile("YOUR_BUCKET_NAME", fileName);
+            return ResponseEntity.ok(file.getObjectContent().readAllBytes());
+        } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
+        }
+    }
+}
