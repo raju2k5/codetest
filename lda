@@ -1,63 +1,39 @@
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.model.*;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
+import software.amazon.awssdk.services.s3.model.S3Object;
 
-import java.io.InputStream;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class S3Service {
 
-    @Autowired
-    private AmazonS3 amazonS3;
+    private final S3Client s3Client;
 
-    public void uploadFile(String bucketName, String key, InputStream inputStream, ObjectMetadata metadata) {
-        amazonS3.putObject(new PutObjectRequest(bucketName, key, inputStream, metadata)
-                .withCannedAcl(CannedAccessControlList.PublicRead));
+    public S3Service(S3Client s3Client) {
+        this.s3Client = s3Client;
     }
 
-    public S3Object downloadFile(String bucketName, String key) {
-        return amazonS3.getObject(new GetObjectRequest(bucketName, key));
-    }
-}
+    public List<String> listObjects(String bucketName) {
+        ListObjectsV2Request request = ListObjectsV2Request.builder()
+                .bucket(bucketName)
+                .build();
 
+        ListObjectsV2Response response = s3Client.listObjectsV2(request);
+        List<String> objectKeys = response.contents().stream()
+                .map(S3Object::key)
+                .collect(Collectors.toList());
 
-----------------------------
-
-
-import com.amazonaws.services.s3.model.S3Object;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
-
-import java.io.IOException;
-
-@RestController
-@RequestMapping("/files")
-public class FileController {
-
-    @Autowired
-    private S3Service s3Service;
-
-    @PostMapping("/upload")
-    public ResponseEntity<String> uploadFile(@RequestParam("file") MultipartFile file) {
-        try {
-            s3Service.uploadFile("YOUR_BUCKET_NAME", file.getOriginalFilename(), file.getInputStream(), new ObjectMetadata());
-            return ResponseEntity.ok("File uploaded successfully!");
-        } catch (IOException e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Failed to upload file.");
-        }
-    }
-
-    @GetMapping("/download/{fileName}")
-    public ResponseEntity<byte[]> downloadFile(@PathVariable String fileName) {
-        try {
-            S3Object file = s3Service.downloadFile("YOUR_BUCKET_NAME", fileName);
-            return ResponseEntity.ok(file.getObjectContent().readAllBytes());
-        } catch (IOException e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
-        }
+        return objectKeys;
     }
 }
+
+
+
+
+
+
+
+ List<String> objectKeys = s3Service.listObjects(bucketName);
+        objectKeys.forEach(System.out::println);
