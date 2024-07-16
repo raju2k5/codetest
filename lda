@@ -1,39 +1,106 @@
+import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
-import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
-import software.amazon.awssdk.services.s3.model.S3Object;
+import software.amazon.awssdk.services.s3.model.*;
 
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVParser;
+import org.apache.commons.csv.CSVRecord;
+import org.apache.parquet.example.data.Group;
+import org.apache.parquet.example.data.simple.SimpleGroup;
+import org.apache.parquet.hadoop.ParquetWriter;
+import org.apache.parquet.hadoop.metadata.CompressionCodecName;
+import org.apache.parquet.hadoop.ParquetFileWriter;
+import org.apache.parquet.schema.MessageType;
+import org.apache.parquet.schema.Types;
+
+import java.io.*;
 import java.util.List;
-import java.util.stream.Collectors;
 
-@Service
-public class S3Service {
+public class CsvToParquetFromS3 {
 
-    private final S3Client s3Client;
-
-    public S3Service(S3Client s3Client) {
-        this.s3Client = s3Client;
-    }
-
-    public List<String> listObjects(String bucketName) {
-        ListObjectsV2Request request = ListObjectsV2Request.builder()
-                .bucket(bucketName)
+    public static void main(String[] args) throws IOException {
+        // AWS S3 client
+        S3Client s3Client = S3Client.builder()
+                .credentialsProvider(DefaultCredentialsProvider.create())
+                .region(Region.US_EAST_1) // Replace with your S3 bucket's region
                 .build();
 
-        ListObjectsV2Response response = s3Client.listObjectsV2(request);
-        List<String> objectKeys = response.contents().stream()
-                .map(S3Object::key)
-                .collect(Collectors.toList());
+        // S3 bucket and object details
+        String bucketName = "your-s3-bucket-name";
+        String csvKey = "path/to/your/csv/file.csv"; // Replace with your CSV file path in S3
 
-        return objectKeys;
+        // Temporary file to store CSV data locally
+        File tempCsvFile = File.createTempFile("temp-csv-", ".csv");
+
+        try {
+            // Download CSV file from S3
+            GetObjectRequest getObjectRequest = GetObjectRequest.builder()
+                    .bucket(bucketName)
+                    .key(csvKey)
+                    .build();
+
+            s3Client.getObject(getObjectRequest, tempCsvFile.toPath());
+
+            // Define schema for Parquet file (adjust as per your CSV schema)
+            MessageType schema = Types.buildMessage()
+                    .requiredInt32("id")
+                    .requiredString("name")
+                    .requiredInt32("age")
+                    .named("CsvSchema");
+
+            // Create Parquet writer
+            String parquetFilePath = "path_to_output_folder/output.parquet";
+            ParquetWriter<Group> parquetWriter = new ParquetWriter<>(
+                    new Path(parquetFilePath),
+                    new GroupWriteSupport(schema),
+                    CompressionCodecName.SNAPPY,
+                    ParquetWriter.DEFAULT_BLOCK_SIZE,
+                    ParquetWriter.DEFAULT_PAGE_SIZE,
+                    ParquetWriter.DEFAULT_PAGE_SIZE,
+                    ParquetWriter.DEFAULT_IS_DICTIONARY_ENABLED,
+                    ParquetWriter.DEFAULT_IS_VALIDATING_ENABLED,
+                    ParquetWriter.DEFAULT_WRITER_VERSION);
+
+            // Read CSV data and write to Parquet
+            try (Reader reader = new FileReader(tempCsvFile);
+                 CSVParser csvParser = new CSVParser(reader, CSVFormat.DEFAULT.withHeader())) {
+
+                for (CSVRecord record : csvParser) {
+                    int id = Integer.parseInt(record.get("id"));
+                    String name = record.get("name");
+                    int age = Integer.parseInt(record.get("age"));
+
+                    // Create Parquet record
+                    Group parquetRecord = new SimpleGroup(schema);
+                    parquetRecord.append("id", id);
+                    parquetRecord.append("name", name);
+                    parquetRecord.append("age", age);
+
+                    // Write Parquet record
+                    parquetWriter.write(parquetRecord);
+                }
+            } finally {
+                // Close Parquet writer
+                if (parquetWriter != null) {
+                    parquetWriter.close();
+                }
+            }
+
+            System.out.println("Conversion complete. Parquet file saved at: " + parquetFilePath);
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            // Clean up: delete temporary CSV file
+            if (tempCsvFile.exists()) {
+                tempCsvFile.delete();
+            }
+        }
+
+        // Shutdown S3 client
+        s3Client.close();
     }
 }
-
-
-
-
-
-
-
- List<String> objectKeys = s3Service.listObjects(bucketName);
+List<String> objectKeys = s3Service.listObjects(bucketName);
         objectKeys.forEach(System.out::println);
