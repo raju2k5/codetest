@@ -1,23 +1,20 @@
-public static ByteArrayOutputStream convertCsvToParquet(List<CSVRecord> records) throws IOException {
+ public static ByteArrayOutputStream convertCsvToParquet(List<CSVRecord> records) throws IOException {
         // Extract headers from the first record to create the Parquet schema dynamically
         String[] headers = records.get(0).toMap().keySet().toArray(new String[0]);
 
-        // Construct the Parquet schema dynamically
-        StringBuilder schemaString = new StringBuilder("message CsvSchema {");
-        for (String header : headers) {
-            schemaString.append("required binary ").append(header.replace(" ", "_")).append(";");
-        }
-        schemaString.append("}");
-
-        // Parse the schema string into a MessageType
-        MessageType schema = MessageTypeParser.parseMessageType(schemaString.toString());
+        // Define the Parquet schema dynamically
+        MessageType schema = MessageTypeParser.parseMessageType("message CsvSchema {" +
+                String.join(",", List.of(headers).stream()
+                        .map(header -> "  required binary " + header.replace(" ", "_") + ";")
+                        .toArray(String[]::new)) +
+                "}");
 
         // Prepare a ByteArrayOutputStream to hold Parquet data
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
 
         // Configure Parquet writing
         GroupWriteSupport writeSupport = new GroupWriteSupport();
-        writeSupport.setSchema(schema);
+        writeSupport.setSchema(schema, new Configuration());
 
         // Create ParquetWriter instance
         ParquetWriter<Group> writer = new ParquetWriter<>(
@@ -26,12 +23,19 @@ public static ByteArrayOutputStream convertCsvToParquet(List<CSVRecord> records)
                 ParquetWriter.DEFAULT_COMPRESSION_CODEC_NAME,
                 ParquetWriter.DEFAULT_BLOCK_SIZE,
                 ParquetWriter.DEFAULT_PAGE_SIZE,
-                ParquetWriter.MAX_PADDING_SIZE // Added maximum padding size
+                ParquetWriter.MAX_PADDING_SIZE_DEFAULT,
+                false, // Enable dictionary encoding
+                false // Enable schema validation
         );
 
         // Convert CSV records to Parquet Groups and write them to ParquetWriter
+        SimpleGroupFactory groupFactory = new SimpleGroupFactory(schema);
         for (CSVRecord record : records) {
-            GroupWriteSupport.writeRecord(record, writer);
+            Group group = groupFactory.newGroup();
+            for (String header : headers) {
+                group.append(header.replace(" ", "_"), record.get(header));
+            }
+            writer.write(group);
         }
 
         // Close writer and ByteArrayOutputStream
