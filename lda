@@ -14,7 +14,7 @@ public static ByteArrayOutputStream convertCsvToParquet(List<CSVRecord> records)
 
         // Configure Parquet writing
         GroupWriteSupport writeSupport = new GroupWriteSupport();
-        writeSupport.setSchema(schema);
+        writeSupport.setSchema(schema, new Configuration()); // Set schema and configuration
 
         // Create ParquetWriter instance
         ParquetWriter<Group> writer = new ParquetWriter<>(
