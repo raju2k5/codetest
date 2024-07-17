@@ -3,30 +3,31 @@ public static ByteArrayOutputStream convertCsvToParquet(List<CSVRecord> records)
         String[] headers = records.get(0).toMap().keySet().toArray(new String[0]);
 
         // Define the Parquet schema dynamically
-        String schemaString = "message CsvSchema {" +
-                String.join(",", List.of(headers).stream()
-                        .map(header -> "  required binary " + header.replace(" ", "_") + ";")
-                        .toArray(String[]::new)) +
-                "}";
-        MessageType schema = MessageTypeParser.parseMessageType(schemaString);
+        MessageType schema = MessageTypeParser.parseMessageType(
+                "message CsvSchema {" +
+                        String.join(",", List.of(headers).stream()
+                                .map(header -> "  required binary " + header.replace(" ", "_") + ";")
+                                .toArray(String[]::new)) +
+                        "}");
 
         // Prepare a ByteArrayOutputStream to hold Parquet data
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
 
         // Configure Parquet writing
+        Configuration conf = new Configuration();
         GroupWriteSupport writeSupport = new GroupWriteSupport();
-        writeSupport.setSchema(schema, new Configuration());
+        writeSupport.setSchema(schema, conf);
 
         // Create ParquetWriter instance
         ParquetWriter<Group> writer = new ParquetWriter<>(
-                new Path("inmemory"), // Output path (not used for in-memory write)
+                new Path("inmemory"),                      // Output path (not used for in-memory write)
+                writeSupport,                             // GroupWriteSupport
                 ParquetWriter.DEFAULT_COMPRESSION_CODEC_NAME,
                 ParquetWriter.DEFAULT_BLOCK_SIZE,
                 ParquetWriter.DEFAULT_PAGE_SIZE,
                 ParquetWriter.MAX_PADDING_SIZE_DEFAULT,
-                false, // Enable dictionary encoding
-                false, // Enable schema validation
-                GroupWriteSupport.getSchema(writeSupport.getSchema(), new Configuration()) // Provide the schema to the writer
+                false,                                     // Enable dictionary encoding
+                false                                      // Enable schema validation
         );
 
         // Convert CSV records to Parquet Groups and write them to ParquetWriter
