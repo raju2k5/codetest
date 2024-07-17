@@ -3,3 +3,5 @@ SLF4J(W): Found provider [ch.qos.logback.classic.spi.LogbackServiceProvider@5ccd
 SLF4J(W): Found provider [org.slf4j.reload4j.Reload4jServiceProvider@1ed1993a]
 SLF4J(W): See https://www.slf4j.org/codes.html#multiple_bindings for an explanation.
 SLF4J(I): Actual provider is of type [ch.qos.logback.classic.spi.LogbackServiceProvider@5ccddd20]
+
+"message":"Application run failed","stackTrace":"java.lang.NullPointerException: parquet.example.schema\r\n\tat java.util.Objects.requireNonNull(Objects.java:233)\r\n\tat org.apache.parquet.hadoop.example.GroupWriteSupport.getSchema(GroupWriteSupport.java:44)
