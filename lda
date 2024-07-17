@@ -1,4 +1,4 @@
-public static ByteArrayOutputStream convertCsvToParquet(List<CSVRecord> records) throws IOException {
+ public static ByteArrayOutputStream convertCsvToParquet(List<CSVRecord> records) throws IOException {
         // Extract headers from the first record to create the Parquet schema dynamically
         String[] headers = records.get(0).toMap().keySet().toArray(new String[0]);
 
@@ -17,17 +17,19 @@ public static ByteArrayOutputStream convertCsvToParquet(List<CSVRecord> records)
         GroupWriteSupport writeSupport = new GroupWriteSupport();
         writeSupport.setSchema(schema, conf);
 
-        ParquetWriter<Group> writer = new ParquetWriter<>(new Path("inmemory"), (WriteSupport<Group>) writeSupport,
-                ParquetWriter.DEFAULT_COMPRESSION_CODEC_NAME,
-                ParquetWriter.DEFAULT_BLOCK_SIZE,
-                ParquetWriter.DEFAULT_PAGE_SIZE,
-                ParquetWriter.DEFAULT_PAGE_SIZE,
-                ParquetWriter.DEFAULT_IS_DICTIONARY_ENABLED,
-                ParquetWriter.DEFAULT_IS_VALIDATING_ENABLED,
-                ParquetWriter.DEFAULT_WRITER_VERSION,
-                conf);
+        // Create ParquetWriter instance using constructor
+        ParquetWriter<Group> writer = new ParquetWriter<Group>(
+                new Path("inmemory"), // Output path (not used for in-memory write)
+                schema, // Schema
+                ParquetWriter.DEFAULT_COMPRESSION_CODEC_NAME, // Compression codec
+                ParquetWriter.DEFAULT_BLOCK_SIZE, // Block size
+                ParquetWriter.DEFAULT_PAGE_SIZE, // Page size
+                ParquetWriter.DEFAULT_IS_DICTIONARY_ENABLED, // Dictionary encoding
+                ParquetWriter.DEFAULT_IS_VALIDATING_ENABLED, // Validation
+                conf // Configuration
+        );
 
-        // Convert CSV records to Parquet Groups and write them to ByteArrayOutputStream
+        // Convert CSV records to Parquet Groups and write them to ParquetWriter
         SimpleGroupFactory groupFactory = new SimpleGroupFactory(schema);
         for (CSVRecord record : records) {
             Group group = groupFactory.newGroup();
