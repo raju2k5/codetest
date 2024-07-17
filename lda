@@ -13,9 +13,8 @@ public static ByteArrayOutputStream convertCsvToParquet(List<CSVRecord> records)
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
 
         // Configure Parquet writing
-        Configuration conf = new Configuration(); // Hadoop Configuration
         GroupWriteSupport writeSupport = new GroupWriteSupport();
-        writeSupport.setSchema(schema, conf);
+        writeSupport.setSchema(schema);
 
         // Create ParquetWriter instance
         ParquetWriter<Group> writer = new ParquetWriter<>(
@@ -27,8 +26,7 @@ public static ByteArrayOutputStream convertCsvToParquet(List<CSVRecord> records)
                 ParquetWriter.DEFAULT_PAGE_SIZE,
                 ParquetWriter.DEFAULT_IS_DICTIONARY_ENABLED,
                 ParquetWriter.DEFAULT_IS_VALIDATING_ENABLED,
-                ParquetWriter.DEFAULT_WRITER_VERSION,
-                conf // Configuration
+                ParquetWriter.DEFAULT_WRITER_VERSION
         );
 
         // Convert CSV records to Parquet Groups and write them to ParquetWriter
