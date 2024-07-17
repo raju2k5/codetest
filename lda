@@ -1,4 +1,4 @@
-// Configure Parquet writing
+ // Configure GroupWriteSupport with schema
         GroupWriteSupport writeSupport = new GroupWriteSupport();
         writeSupport.setSchema(schema, new Configuration());
 
