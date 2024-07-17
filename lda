@@ -1,1 +1,52 @@
-{"timestamp":"2024-07-17T19:50:58.6656638Z","seal":"109670","appName":"datapipeline-publish-sdk","level":"ERROR","logger":"org.springframework.boot.SpringApplication","message":"Application run failed","stackTrace":"java.lang.IllegalArgumentException: No enum constant org.apache.parquet.schema.Type.Repetition.,\r\n\tat java.lang.Enum.valueOf(Enum.java:273)\r\n\tat org.apache.parquet.schema.Type$Repetition.valueOf(Type.java:77)\r\n\tat org.apache.parquet.schema.MessageTypeParser.asRepetition(MessageTypeParser.java:231)\r\n\t... 27 common frames omitted\r\nWrapped by: java.lang.IllegalArgumentException: expected one of [REQUIRED, OPTIONAL, REPEATED] got , at line 0: message CsvSchema {  required binary GOAL_BAS_ANL_UNQ_ID;,\r\n\tat org.apache.parquet.schema.MessageTypeParser.asRepetition(MessageTypeParser.java:233)\r\n\tat org.apache.parquet.schema.MessageTypeParser.addType(MessageTypeParser.java:106)\r\n\tat org.apache.parquet.schema.MessageTypeParser.addGroupTypeFields(MessageTypeParser.java:101)\r\n\tat org.apache.parquet.schema.MessageTypeParser.parse(MessageTypeParser.java:94)\r\n\tat org.apache.parquet.schema.MessageTypeParser.parseMessageType(MessageTypeParser.java:84)\r\n\tat com.jpmc.gbiconvert.service.S3Service.convertCsvToParquet(S3Service.java:145)\r\n\tat com.jpmc.gbiconvert.service.S3Service.CSVtoParquet(S3Service.java:105)\r\n\tat com.jpmc.gbiconvert.gbiApplication.run(gbiApplication.java:36)\r\n\tat org.springframework.boot.SpringApplication.lambda$callRunner$5(SpringApplication.java:774)\r\n\tat org.springframework.util.function.ThrowingConsumer$1.acceptWithException(ThrowingConsumer.java:83)\r\n\tat org.springframework.util.function.ThrowingConsumer.accept(ThrowingConsumer.java:60)\r\n\tat org.springframework.util.function.ThrowingConsumer$1.accept(ThrowingConsumer.java:88)\r\n\tat org.springframework.boot.SpringApplication.callRunner(SpringApplication.java:782)\r\n\tat org.springframework.boot.SpringApplication.callRunner(SpringApplication.java:773)\r\n\tat org.springframework.boot.SpringApplication.lambda$callRunners$3(SpringApplication.java:758)\r\n\tat java.util.stream.ForEachOps$ForEachOp$OfRef.accept(ForEachOps.java:183)\r\n\tat java.util.stream.SortedOps$SizedRefSortingSink.end(SortedOps.java:357)\r\n\tat java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:510)\r\n\tat java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:499)\r\n\tat java.util.stream.ForEachOps$ForEachOp.evaluateSequential(ForEachOps.java:150)\r\n\tat java.util.stream.ForEachOps$ForEachOp$OfRef.evaluateSequential(ForEachOps.java:173)\r\n\tat java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:234)\r\n\tat java.util.stream.ReferencePipeline.forEach(ReferencePipeline.java:596)\r\n\tat org.springframework.boot.SpringApplication.callRunners(SpringApplication.java:758)\r\n\tat org.springframework.boot.SpringApplication.run(SpringApplication.java:331)\r\n\tat org.springframework.boot.SpringApplication.run(SpringApplication.java:1317)\r\n\tat org.springframework.boot.SpringApplication.run(SpringApplication.java:1306)\r\n\tat com.jpmc.gbiconvert.gbiApplication.main(gbiApplication.java:27)\r\n"}
+public static ByteArrayOutputStream convertCsvToParquet(List<CSVRecord> records) throws IOException {
+        // Extract headers from the first record to create the Parquet schema dynamically
+        String[] headers = records.get(0).toMap().keySet().toArray(new String[0]);
+
+        // Define the Parquet schema dynamically
+        String schemaString = "message CsvSchema {" +
+                              String.join(",", List.of(headers).stream()
+                                      .map(header -> "  required binary " + header.replace(" ", "_"))
+                                      .toArray(String[]::new)) +
+                              "}";
+        System.out.println("Generated schema string: " + schemaString); // Add debug print
+
+        // Parse the schema string
+        MessageType schema = MessageTypeParser.parseMessageType(schemaString);
+
+        // Prepare a ByteArrayOutputStream to hold Parquet data
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+
+        // Configure Parquet writing
+        Configuration conf = new Configuration();
+        GroupWriteSupport writeSupport = new GroupWriteSupport();
+        writeSupport.setSchema(schema, conf);
+
+        // Create ParquetWriter instance
+        ParquetWriter<Group> writer = new ParquetWriter<>(
+                new Path("inmemory"),                      // Output path (not used for in-memory write)
+                writeSupport,                             // GroupWriteSupport
+                ParquetWriter.DEFAULT_COMPRESSION_CODEC_NAME,
+                ParquetWriter.DEFAULT_BLOCK_SIZE,
+                ParquetWriter.DEFAULT_PAGE_SIZE,
+                ParquetWriter.MAX_PADDING_SIZE_DEFAULT,
+                false,                                     // Enable dictionary encoding
+                false                                      // Enable schema validation
+        );
+
+        // Convert CSV records to Parquet Groups and write them to ParquetWriter
+        SimpleGroupFactory groupFactory = new SimpleGroupFactory(schema);
+        for (CSVRecord record : records) {
+            Group group = groupFactory.newGroup();
+            for (String header : headers) {
+                group.append(header.replace(" ", "_"), record.get(header));
+            }
+            writer.write(group);
+        }
+
+        // Close writer and ByteArrayOutputStream
+        writer.close();
+        baos.close();
+
+        return baos;
+    }
+}
