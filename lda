@@ -1,77 +1,4 @@
-import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
-import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.*;
-import org.apache.commons.csv.CSVFormat;
-import org.apache.commons.csv.CSVParser;
-import org.apache.commons.csv.CSVRecord;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.Path;
-import org.apache.parquet.example.data.Group;
-import org.apache.parquet.example.data.simple.SimpleGroupFactory;
-import org.apache.parquet.hadoop.ParquetWriter;
-import org.apache.parquet.hadoop.example.GroupWriteSupport;
-import org.apache.parquet.schema.MessageType;
-import org.apache.parquet.schema.MessageTypeParser;
-
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.Reader;
-import java.util.List;
-
-public class S3CsvToParquetConverter {
-
-    public static void main(String[] args) throws IOException {
-        String bucketName = "your-bucket-name";
-        String csvKey = "path/to/your/file.csv";
-        String parquetKey = "path/to/output/file.parquet";
-
-        // Initialize S3 client
-        S3Client s3Client = S3Client.builder()
-                .region(Region.US_EAST_1) // Replace with your desired AWS region
-                .credentialsProvider(DefaultCredentialsProvider.create())
-                .build();
-
-        // Read CSV from S3
-        List<CSVRecord> records = readCsvFromS3(s3Client, bucketName, csvKey);
-
-        // Convert CSV to Parquet
-        ByteArrayOutputStream parquetOutputStream = convertCsvToParquet(records);
-
-        // Upload Parquet to S3
-        uploadParquetToS3(s3Client, bucketName, parquetKey, parquetOutputStream.toByteArray());
-
-        System.out.println("CSV from S3 converted to Parquet and uploaded back to S3 successfully!");
-    }
-
-    public static List<CSVRecord> readCsvFromS3(S3Client s3Client, String bucketName, String csvKey) throws IOException {
-        List<CSVRecord> records;
-
-        // Create a request to get object from S3
-        GetObjectRequest getObjectRequest = GetObjectRequest.builder()
-                .bucket(bucketName)
-                .key(csvKey)
-                .build();
-
-        // Get the object from S3 as a stream
-        ResponseInputStream<GetObjectResponse> objectStream = s3Client.getObject(getObjectRequest);
-
-        // Read CSV from the object stream using Apache Commons CSV
-        Reader reader = new InputStreamReader(objectStream);
-        CSVParser csvParser = new CSVParser(reader, CSVFormat.DEFAULT.withFirstRecordAsHeader());
-
-        // Convert CSV parser to list of CSVRecord
-        records = csvParser.getRecords();
-
-        // Close CSV parser and reader
-        csvParser.close();
-        reader.close();
-
-        return records;
-    }
-
-    public static ByteArrayOutputStream convertCsvToParquet(List<CSVRecord> records) throws IOException {
+public static ByteArrayOutputStream convertCsvToParquet(List<CSVRecord> records) throws IOException {
         // Extract headers from the first record to create the Parquet schema dynamically
         String[] headers = records.get(0).toMap().keySet().toArray(new String[0]);
 
@@ -90,15 +17,17 @@ public class S3CsvToParquetConverter {
         GroupWriteSupport writeSupport = new GroupWriteSupport();
         writeSupport.setSchema(schema, conf);
 
-        // Create ParquetWriter instance using constructor
-        ParquetWriter<Group> writer = new ParquetWriter<Group>(
+        // Create ParquetWriter instance
+        ParquetWriter<Group> writer = new ParquetWriter<>(
                 new Path("inmemory"), // Output path (not used for in-memory write)
-                schema, // Schema
-                ParquetWriter.DEFAULT_COMPRESSION_CODEC_NAME, // Compression codec
-                ParquetWriter.DEFAULT_BLOCK_SIZE, // Block size
-                ParquetWriter.DEFAULT_PAGE_SIZE, // Page size
-                ParquetWriter.DEFAULT_IS_DICTIONARY_ENABLED, // Dictionary encoding
-                ParquetWriter.DEFAULT_IS_VALIDATING_ENABLED, // Validation
+                writeSupport, // GroupWriteSupport
+                ParquetWriter.DEFAULT_COMPRESSION_CODEC_NAME,
+                ParquetWriter.DEFAULT_BLOCK_SIZE,
+                ParquetWriter.DEFAULT_PAGE_SIZE,
+                ParquetWriter.DEFAULT_PAGE_SIZE,
+                ParquetWriter.DEFAULT_IS_DICTIONARY_ENABLED,
+                ParquetWriter.DEFAULT_IS_VALIDATING_ENABLED,
+                ParquetWriter.DEFAULT_WRITER_VERSION,
                 conf // Configuration
         );
 
@@ -112,17 +41,9 @@ public class S3CsvToParquetConverter {
             writer.write(group);
         }
 
-        // Close writer (this also closes the ByteArrayOutputStream)
+        // Close writer and ByteArrayOutputStream
         writer.close();
+        baos.close();
 
         return baos;
     }
-
-    public static void uploadParquetToS3(S3Client s3Client, String bucketName, String parquetKey, byte[] parquetData) {
-        // Upload Parquet data to S3
-        s3Client.putObject(PutObjectRequest.builder()
-                .bucket(bucketName)
-                .key(parquetKey)
-                .build(), RequestBody.fromBytes(parquetData));
-    }
-}
