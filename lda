@@ -1,13 +1,14 @@
- public static ByteArrayOutputStream convertCsvToParquet(List<CSVRecord> records) throws IOException {
+public static ByteArrayOutputStream convertCsvToParquet(List<CSVRecord> records) throws IOException {
         // Extract headers from the first record to create the Parquet schema dynamically
         String[] headers = records.get(0).toMap().keySet().toArray(new String[0]);
 
         // Define the Parquet schema dynamically
-        MessageType schema = MessageTypeParser.parseMessageType("message CsvSchema {" +
+        String schemaString = "message CsvSchema {" +
                 String.join(",", List.of(headers).stream()
                         .map(header -> "  required binary " + header.replace(" ", "_") + ";")
                         .toArray(String[]::new)) +
-                "}");
+                "}";
+        MessageType schema = MessageTypeParser.parseMessageType(schemaString);
 
         // Prepare a ByteArrayOutputStream to hold Parquet data
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -18,14 +19,14 @@
 
         // Create ParquetWriter instance
         ParquetWriter<Group> writer = new ParquetWriter<>(
-                new org.apache.hadoop.fs.Path("inmemory"), // Output path (not used for in-memory write)
-                writeSupport, // GroupWriteSupport
+                new Path("inmemory"), // Output path (not used for in-memory write)
                 ParquetWriter.DEFAULT_COMPRESSION_CODEC_NAME,
                 ParquetWriter.DEFAULT_BLOCK_SIZE,
                 ParquetWriter.DEFAULT_PAGE_SIZE,
                 ParquetWriter.MAX_PADDING_SIZE_DEFAULT,
                 false, // Enable dictionary encoding
-                false // Enable schema validation
+                false, // Enable schema validation
+                GroupWriteSupport.getSchema(writeSupport.getSchema(), new Configuration()) // Provide the schema to the writer
         );
 
         // Convert CSV records to Parquet Groups and write them to ParquetWriter
