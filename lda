@@ -1,47 +1,5 @@
-public static ByteArrayOutputStream convertCsvToParquet(List<CSVRecord> records) throws IOException {
-        // Extract headers from the first record to create the Parquet schema dynamically
-        String[] headers = records.get(0).toMap().keySet().toArray(new String[0]);
-
-        // Define the Parquet schema dynamically
-        MessageType schema = MessageTypeParser.parseMessageType("message CsvSchema {" +
-                String.join("", List.of(headers).stream()
-                        .map(header -> "  required binary " + header + ";")
-                        .toArray(String[]::new)) +
-                "}");
-
-        // Prepare a ByteArrayOutputStream to hold Parquet data
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-
-        // Configure Parquet writing
-        GroupWriteSupport writeSupport = new GroupWriteSupport();
-        writeSupport.setSchema(schema, new Configuration()); // Set schema and configuration
-
-        // Create ParquetWriter instance
-        ParquetWriter<Group> writer = new ParquetWriter<>(
-                new Path("inmemory"), // Output path (not used for in-memory write)
-                writeSupport, // GroupWriteSupport
-                ParquetWriter.DEFAULT_COMPRESSION_CODEC_NAME,
-                ParquetWriter.DEFAULT_BLOCK_SIZE,
-                ParquetWriter.DEFAULT_PAGE_SIZE,
-                ParquetWriter.DEFAULT_PAGE_SIZE,
-                ParquetWriter.DEFAULT_IS_DICTIONARY_ENABLED,
-                ParquetWriter.DEFAULT_IS_VALIDATING_ENABLED,
-                ParquetWriter.DEFAULT_WRITER_VERSION
-        );
-
-        // Convert CSV records to Parquet Groups and write them to ParquetWriter
-        SimpleGroupFactory groupFactory = new SimpleGroupFactory(schema);
-        for (CSVRecord record : records) {
-            Group group = groupFactory.newGroup();
-            for (String header : headers) {
-                group.append(header, record.get(header));
-            }
-            writer.write(group);
-        }
-
-        // Close writer and ByteArrayOutputStream
-        writer.close();
-        baos.close();
-
-        return baos;
-    }
+SLF4J(W): Class path contains multiple SLF4J providers.
+SLF4J(W): Found provider [ch.qos.logback.classic.spi.LogbackServiceProvider@5ccddd20]
+SLF4J(W): Found provider [org.slf4j.reload4j.Reload4jServiceProvider@1ed1993a]
+SLF4J(W): See https://www.slf4j.org/codes.html#multiple_bindings for an explanation.
+SLF4J(I): Actual provider is of type [ch.qos.logback.classic.spi.LogbackServiceProvider@5ccddd20]
