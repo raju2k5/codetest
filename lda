@@ -1,12 +1,5 @@
-Generated schema string: message CsvSchema {;
-  required binary GOAL_BAS_ANL_UNQ_ID;
-  required binary GOAL_BAS_ANL_ACCT_SRC_SYS_CD;
-  required binary ENTP_PRTY_ID;
-  required binary INDV_FRST_NM;
-  required binary INDV_BRTH_MO_NB;
-  required binary INDV_BRTH_YR_NB;
-  required binary MARI_STS_CD;
-  required binary INDV_GNDR_CD;
-  required binary EMP_STS_TX;
-  required binary PTCP_TYPE_TX;
-  required binary INDV_INCOM_AMT;}
+String schemaString = "message CsvSchema {" +
+        String.join("", List.of(headers).stream()
+                .map(header -> "\n  required binary " + header.replace(" ", "_") + ";")
+                .collect(Collectors.joining())) +
+        "\n}";
