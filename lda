@@ -5,7 +5,7 @@
     // Create ParquetWriter instance
     ParquetWriter<Group> writer = new ParquetWriter<>(
             new Path("inmemory"), // Output path (not used for in-memory write)
-            GroupWriteSupport.getSchema(writeSupport.getSchema(), new Configuration()),
+            GroupWriteSupport.getSchema(schema), // Use schema directly from GroupWriteSupport
             ParquetWriter.DEFAULT_COMPRESSION_CODEC_NAME,
             ParquetWriter.DEFAULT_BLOCK_SIZE,
             ParquetWriter.DEFAULT_PAGE_SIZE,
