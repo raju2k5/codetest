@@ -1,48 +1,23 @@
-<dependency>
-    <groupId>software.amazon.awssdk</groupId>
-    <artifactId>s3</artifactId>
-    <version>2.17.102</version>
-</dependency>
-<dependency>
-    <groupId>software.amazon.awssdk</groupId>
-    <artifactId>s3-paginators</artifactId>
-    <version>2.17.102</version>
-</dependency>
-<dependency>
-    <groupId>org.apache.hadoop</groupId>
-    <artifactId>hadoop-common</artifactId>
-    <version>3.3.1</version>
-</dependency>
-<dependency>
-    <groupId>org.apache.parquet</groupId>
-    <artifactId>parquet-hadoop</artifactId>
-    <version>1.12.0</version>
-</dependency>
-<dependency>
-    <groupId>org.apache.commons</groupId>
-    <artifactId>commons-csv</artifactId>
-    <version>1.9.0</version>
-</dependency>
-
-
-
-
-import software.amazon.awssdk.auth.credentials.*;
-import software.amazon.awssdk.regions.*;
-import software.amazon.awssdk.services.s3.*;
-import software.amazon.awssdk.services.s3.model.*;
-
-import org.apache.commons.csv.*;
-import org.apache.hadoop.conf.*;
-import org.apache.hadoop.fs.*;
-import org.apache.parquet.example.data.*;
-import org.apache.parquet.example.data.simple.*;
-import org.apache.parquet.hadoop.*;
-import org.apache.parquet.hadoop.api.*;
-import org.apache.parquet.schema.*;
+import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVParser;
+import org.apache.commons.csv.CSVRecord;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.parquet.example.data.Group;
+import org.apache.parquet.example.data.simple.SimpleGroupFactory;
+import org.apache.parquet.hadoop.ParquetWriter;
+import org.apache.parquet.hadoop.example.GroupWriteSupport;
+import org.apache.parquet.schema.MessageType;
+import org.apache.parquet.schema.MessageTypeParser;
 
 import java.io.*;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 
 public class S3CsvToParquetConverter {
 
@@ -79,12 +54,8 @@ public class S3CsvToParquetConverter {
         File tempFile = File.createTempFile("temp", ".csv");
 
         // Download CSV file from S3 to local temp file
-        GetObjectRequest getObjectRequest = GetObjectRequest.builder()
-                .bucket(bucketName)
-                .key(csvKey)
-                .build();
-
-        s3Client.getObject(getObjectRequest, ResponseTransformer.toFile(tempFile));
+        s3Client.getObject(GetObjectRequest.builder().bucket(bucketName).key(csvKey).build(),
+                ResponseTransformer.toFile(tempFile));
 
         return tempFile;
     }
@@ -95,7 +66,7 @@ public class S3CsvToParquetConverter {
         CSVParser csvParser = new CSVParser(reader, CSVFormat.DEFAULT);
 
         for (CSVRecord csvRecord : csvParser) {
-            records.add(csvRecord.values());
+            records.add(new String[] { csvRecord.get(0), csvRecord.get(1), csvRecord.get(2) });
         }
 
         csvParser.close();
@@ -107,12 +78,8 @@ public class S3CsvToParquetConverter {
     public static void convertCsvToParquet(List<String[]> records, String parquetFilePath) throws IOException {
         // Define the Parquet schema
         MessageType schema = MessageTypeParser.parseMessageType(
-                "message CsvSchema {" +
-                        "  required binary col1;" +
-                        "  required int32 col2;" +
-                        "  required double col3;" +
-                        "}"
-        );
+                "message CsvSchema {" + "  required binary col1;" + "  required int32 col2;" + "  required double col3;"
+                        + "}");
 
         // Configure Parquet writing
         Configuration conf = new Configuration();
@@ -120,25 +87,16 @@ public class S3CsvToParquetConverter {
         GroupWriteSupport writeSupport = new GroupWriteSupport();
         writeSupport.setSchema(schema, conf);
 
-        ParquetWriter<Group> writer = new ParquetWriter<>(
-                path,
-                (WriteSupport<Group>) writeSupport,
-                ParquetWriter.DEFAULT_COMPRESSION_CODEC_NAME,
-                ParquetWriter.DEFAULT_BLOCK_SIZE,
-                ParquetWriter.DEFAULT_PAGE_SIZE,
-                ParquetWriter.DEFAULT_PAGE_SIZE,
-                ParquetWriter.DEFAULT_IS_DICTIONARY_ENABLED,
-                ParquetWriter.DEFAULT_IS_VALIDATING_ENABLED,
-                ParquetWriter.DEFAULT_WRITER_VERSION,
-                conf
-        );
+        ParquetWriter<Group> writer = new ParquetWriter<>(path, (WriteSupport<Group>) writeSupport,
+                ParquetWriter.DEFAULT_COMPRESSION_CODEC_NAME, ParquetWriter.DEFAULT_BLOCK_SIZE,
+                ParquetWriter.DEFAULT_PAGE_SIZE, ParquetWriter.DEFAULT_PAGE_SIZE,
+                ParquetWriter.DEFAULT_IS_DICTIONARY_ENABLED, ParquetWriter.DEFAULT_IS_VALIDATING_ENABLED,
+                ParquetWriter.DEFAULT_WRITER_VERSION, conf);
 
         // Convert CSV records to Parquet Groups and write them
         SimpleGroupFactory groupFactory = new SimpleGroupFactory(schema);
         for (String[] record : records) {
-            Group group = groupFactory.newGroup()
-                    .append("col1", record[0])
-                    .append("col2", Integer.parseInt(record[1]))
+            Group group = groupFactory.newGroup().append("col1", record[0]).append("col2", Integer.parseInt(record[1]))
                     .append("col3", Double.parseDouble(record[2]));
 
             writer.write(group);
@@ -149,24 +107,7 @@ public class S3CsvToParquetConverter {
 
     public static void uploadParquetToS3(S3Client s3Client, String bucketName, String parquetKey, File parquetFile) {
         // Upload Parquet file to S3
-        PutObjectRequest putObjectRequest = PutObjectRequest.builder()
-                .bucket(bucketName)
-                .key(parquetKey)
-                .build();
-
-        s3Client.putObject(putObjectRequest, Path.fromFile(parquetFile));
-
-        // Alternatively, you can use TransferManager for large files and better performance
-//        TransferManager transferManager = TransferManager.builder()
-//                .s3Client(s3Client)
-//                .build();
-//
-//        Upload upload = transferManager.upload(bucketName, parquetKey, parquetFile);
-//        try {
-//            upload.waitForCompletion();
-//        } catch (InterruptedException e) {
-//            e.printStackTrace();
-//        }
-//        transferManager.shutdownNow();
+        s3Client.putObject(PutObjectRequest.builder().bucket(bucketName).key(parquetKey).build(),
+                Path.fromFile(parquetFile));
     }
 }
