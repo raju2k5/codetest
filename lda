@@ -1,8 +1,3 @@
-SLF4J(W): Class path contains multiple SLF4J providers.
-SLF4J(W): Found provider [ch.qos.logback.classic.spi.LogbackServiceProvider@5ccddd20]
-SLF4J(W): Found provider [org.slf4j.reload4j.Reload4jServiceProvider@1ed1993a]
-SLF4J(W): See https://www.slf4j.org/codes.html#multiple_bindings for an explanation.
-SLF4J(I): Actual provider is of type [ch.qos.logback.classic.spi.LogbackServiceProvider@5ccddd20]
 public static ByteArrayOutputStream convertCsvToParquet(List<CSVRecord> records) throws IOException {
         // Extract headers from the first record to create the Parquet schema dynamically
         String[] headers = records.get(0).toMap().keySet().toArray(new String[0]);
@@ -22,25 +17,18 @@ public static ByteArrayOutputStream convertCsvToParquet(List<CSVRecord> records)
         writeSupport.setSchema(schema);
 
         // Create ParquetWriter instance
-        ParquetWriter<Group> writer = new ParquetWriter<>(
+        ParquetWriter<org.apache.hadoop.io.NullWritable> writer = new ParquetWriter<>(
                 new org.apache.hadoop.fs.Path("inmemory"), // Output path (not used for in-memory write)
                 writeSupport, // GroupWriteSupport
                 ParquetWriter.DEFAULT_COMPRESSION_CODEC_NAME,
                 ParquetWriter.DEFAULT_BLOCK_SIZE,
                 ParquetWriter.DEFAULT_PAGE_SIZE,
-                ParquetWriter.DEFAULT_DICTIONARY_PAGE_SIZE,
-                false, // Enable dictionary encoding
-                false // Enable schema validation
+                ParquetWriter.MAX_PADDING_SIZE // Added maximum padding size
         );
 
         // Convert CSV records to Parquet Groups and write them to ParquetWriter
-        SimpleGroupFactory groupFactory = new SimpleGroupFactory(schema);
         for (CSVRecord record : records) {
-            Group group = groupFactory.newGroup();
-            for (String header : headers) {
-                group.append(header.replace(" ", "_"), record.get(header));
-            }
-            writer.write(group);
+            GroupWriteSupport.writeRecord(record, writer);
         }
 
         // Close writer and ByteArrayOutputStream
