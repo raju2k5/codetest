@@ -1,4 +1,3 @@
-
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -33,7 +32,7 @@ public class S3CsvToParquetConverter {
                 .build();
 
         // Read CSV from S3
-        List<String[]> records = readCsvFromS3(s3Client, bucketName, csvKey);
+        List<CSVRecord> records = readCsvFromS3(s3Client, bucketName, csvKey);
 
         // Convert CSV to Parquet
         ByteArrayOutputStream parquetOutputStream = convertCsvToParquet(records);
@@ -44,8 +43,8 @@ public class S3CsvToParquetConverter {
         System.out.println("CSV from S3 converted to Parquet and uploaded back to S3 successfully!");
     }
 
-    public static List<String[]> readCsvFromS3(S3Client s3Client, String bucketName, String csvKey) throws IOException {
-        List<String[]> records = new ArrayList<>();
+    public static List<CSVRecord> readCsvFromS3(S3Client s3Client, String bucketName, String csvKey) throws IOException {
+        List<CSVRecord> records;
 
         // Create a request to get object from S3
         GetObjectRequest getObjectRequest = GetObjectRequest.builder()
@@ -56,14 +55,12 @@ public class S3CsvToParquetConverter {
         // Get the object from S3 as a stream
         ResponseInputStream<GetObjectResponse> objectStream = s3Client.getObject(getObjectRequest);
 
-        // Read CSV from the object stream
+        // Read CSV from the object stream using Apache Commons CSV
         Reader reader = new InputStreamReader(objectStream);
-        CSVParser csvParser = new CSVParser(reader, CSVFormat.DEFAULT);
+        CSVParser csvParser = new CSVParser(reader, CSVFormat.DEFAULT.withFirstRecordAsHeader());
 
-        // Process each CSV record
-        for (CSVRecord csvRecord : csvParser) {
-            records.add(new String[] { csvRecord.get(0), csvRecord.get(1), csvRecord.get(2) });
-        }
+        // Convert CSV parser to list of CSVRecord
+        records = csvParser.getRecords();
 
         // Close CSV parser and reader
         csvParser.close();
@@ -72,11 +69,16 @@ public class S3CsvToParquetConverter {
         return records;
     }
 
-    public static ByteArrayOutputStream convertCsvToParquet(List<String[]> records) throws IOException {
-        // Define the Parquet schema
-        MessageType schema = MessageTypeParser.parseMessageType(
-                "message CsvSchema {" + "  required binary col1;" + "  required int32 col2;" + "  required double col3;"
-                        + "}");
+    public static ByteArrayOutputStream convertCsvToParquet(List<CSVRecord> records) throws IOException {
+        // Extract headers from the first record to create the Parquet schema dynamically
+        String[] headers = records.get(0).toMap().keySet().toArray(new String[0]);
+
+        // Define the Parquet schema dynamically
+        MessageType schema = MessageTypeParser.parseMessageType("message CsvSchema {" +
+                String.join("", List.of(headers).stream()
+                        .map(header -> "  required binary " + header + ";")
+                        .toArray(String[]::new)) +
+                "}");
 
         // Prepare a ByteArrayOutputStream to hold Parquet data
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -94,13 +96,15 @@ public class S3CsvToParquetConverter {
 
         // Convert CSV records to Parquet Groups and write them to ByteArrayOutputStream
         SimpleGroupFactory groupFactory = new SimpleGroupFactory(schema);
-        for (String[] record : records) {
-            Group group = groupFactory.newGroup().append("col1", record[0]).append("col2", Integer.parseInt(record[1]))
-                    .append("col3", Double.parseDouble(record[2]));
-
+        for (CSVRecord record : records) {
+            Group group = groupFactory.newGroup();
+            for (String header : headers) {
+                group.append(header, record.get(header));
+            }
             writer.write(group);
         }
 
+        // Close writer and ByteArrayOutputStream
         writer.close();
         baos.close();
 
@@ -109,7 +113,9 @@ public class S3CsvToParquetConverter {
 
     public static void uploadParquetToS3(S3Client s3Client, String bucketName, String parquetKey, byte[] parquetData) {
         // Upload Parquet data to S3
-        s3Client.putObject(PutObjectRequest.builder().bucket(bucketName).key(parquetKey)
+        s3Client.putObject(PutObjectRequest.builder()
+                .bucket(bucketName)
+                .key(parquetKey)
                 .build(), RequestBody.fromBytes(parquetData));
     }
 }
