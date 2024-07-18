@@ -16,6 +16,7 @@ import org.apache.parquet.hadoop.metadata.CompressionCodecName;
 
 import java.io.*;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class CsvToParquetS3Converter {
 
@@ -45,11 +46,8 @@ public class CsvToParquetS3Converter {
 
     public void convertCsvToParquetAndUpload(String bucketName, String csvKey, String parquetKey)
             throws IOException, CsvException, SdkClientException {
-        // Download CSV file from S3
-        File csvFile = downloadFileFromS3(bucketName, csvKey);
-
-        // Read CSV data
-        List<String[]> csvData = readCsv(csvFile);
+        // Read CSV data from S3
+        List<String[]> csvData = readCsvFromS3(bucketName, csvKey);
 
         // Define Avro schema
         Schema avroSchema = buildAvroSchema();
@@ -61,25 +59,26 @@ public class CsvToParquetS3Converter {
         uploadFileToS3(bucketName, parquetKey, parquetFile);
 
         // Clean up: delete temporary files
-        csvFile.delete();
         parquetFile.delete();
     }
 
-    private File downloadFileFromS3(String bucketName, String key) throws IOException, SdkClientException {
-        File file = File.createTempFile("temp", null);
+    private List<String[]> readCsvFromS3(String bucketName, String key) throws IOException, CsvException, SdkClientException {
+        // Initialize the S3 getObjectRequest
         GetObjectRequest getObjectRequest = GetObjectRequest.builder()
                 .bucket(bucketName)
                 .key(key)
                 .build();
-        s3Client.getObject(getObjectRequest, ResponseTransformer.toFile(file));
-        return file;
-    }
 
-    private List<String[]> readCsv(File csvFile) throws IOException, CsvException {
-        CSVReader csvReader = new CSVReader(new FileReader(csvFile));
-        List<String[]> csvData = csvReader.readAll();
-        csvReader.close();
-        return csvData;
+        // Read CSV data from S3 directly
+        ResponseInputStream<GetObjectResponse> responseInputStream = s3Client.getObject(getObjectRequest, ResponseTransformer.toInputStream());
+
+        // Use try-with-resources to ensure stream closure
+        try (InputStreamReader inputStreamReader = new InputStreamReader(responseInputStream);
+             CSVReader csvReader = new CSVReader(inputStreamReader)) {
+            // Read all CSV rows and collect them into a List<String[]>
+            List<String[]> csvData = csvReader.readAll();
+            return csvData;
+        }
     }
 
     private Schema buildAvroSchema() {
@@ -117,10 +116,13 @@ public class CsvToParquetS3Converter {
     }
 
     private void uploadFileToS3(String bucketName, String key, File file) throws SdkClientException {
+        // Initialize the S3 putObjectRequest
         PutObjectRequest putObjectRequest = PutObjectRequest.builder()
                 .bucket(bucketName)
                 .key(key)
                 .build();
+
+        // Upload file to S3
         s3Client.putObject(putObjectRequest, file.toPath());
     }
 }
