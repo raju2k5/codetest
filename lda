@@ -1,8 +1,3 @@
-import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
-import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.*;
-
 import com.opencsv.CSVReader;
 import com.opencsv.exceptions.CsvException;
 import org.apache.avro.Schema;
@@ -16,85 +11,40 @@ import org.apache.parquet.hadoop.metadata.CompressionCodecName;
 
 import java.io.*;
 import java.util.List;
-import java.util.stream.Collectors;
 
-public class CsvToParquetS3Converter {
-
-    private final S3Client s3Client;
-
-    public CsvToParquetS3Converter() {
-        // Initialize S3 client
-        this.s3Client = S3Client.builder()
-                .region(Region.US_EAST_1)  // Replace with your desired AWS region
-                .credentialsProvider(DefaultCredentialsProvider.create())
-                .build();
-    }
+public class CsvToParquetConverter {
 
     public static void main(String[] args) {
-        String bucketName = "your-s3-bucket-name";
-        String csvKey = "input.csv"; // Path to CSV file in S3
-        String parquetKey = "output.parquet"; // Path to output Parquet file in S3
+        String csvFilePath = "path/to/your/csv/file.csv";
+        String parquetFilePath = "path/to/output/converted.parquet";
 
-        CsvToParquetS3Converter converter = new CsvToParquetS3Converter();
         try {
-            converter.convertCsvToParquetAndUpload(bucketName, csvKey, parquetKey);
+            // Read CSV file
+            List<String[]> csvData = readCsv(csvFilePath);
+
+            // Infer schema and convert CSV to Parquet
+            convertCsvToParquet(csvData, parquetFilePath);
+
             System.out.println("Conversion completed successfully.");
-        } catch (IOException | CsvException | SdkClientException e) {
+
+        } catch (IOException | CsvException e) {
             e.printStackTrace();
         }
     }
 
-    public void convertCsvToParquetAndUpload(String bucketName, String csvKey, String parquetKey)
-            throws IOException, CsvException, SdkClientException {
-        // Read CSV data from S3
-        List<String[]> csvData = readCsvFromS3(bucketName, csvKey);
-
-        // Define Avro schema
-        Schema avroSchema = buildAvroSchema();
-
-        // Convert CSV data to Parquet
-        File parquetFile = convertCsvToParquet(csvData, avroSchema);
-
-        // Upload Parquet file to S3
-        uploadFileToS3(bucketName, parquetKey, parquetFile);
-
-        // Clean up: delete temporary files
-        parquetFile.delete();
+    private static List<String[]> readCsv(String csvFilePath) throws IOException, CsvException {
+        CSVReader csvReader = new CSVReader(new FileReader(csvFilePath));
+        List<String[]> csvData = csvReader.readAll();
+        csvReader.close();
+        return csvData;
     }
 
-    private List<String[]> readCsvFromS3(String bucketName, String key) throws IOException, CsvException, SdkClientException {
-        // Initialize the S3 getObjectRequest
-        GetObjectRequest getObjectRequest = GetObjectRequest.builder()
-                .bucket(bucketName)
-                .key(key)
-                .build();
+    private static void convertCsvToParquet(List<String[]> csvData, String parquetFilePath) throws IOException {
+        // Infer Avro schema dynamically from CSV data
+        Schema avroSchema = buildAvroSchema(csvData.get(0)); // Assuming the first row contains headers
 
-        // Read CSV data from S3 directly
-        ResponseInputStream<GetObjectResponse> responseInputStream = s3Client.getObject(getObjectRequest, ResponseTransformer.toInputStream());
-
-        // Use try-with-resources to ensure stream closure
-        try (InputStreamReader inputStreamReader = new InputStreamReader(responseInputStream);
-             CSVReader csvReader = new CSVReader(inputStreamReader)) {
-            // Read all CSV rows and collect them into a List<String[]>
-            List<String[]> csvData = csvReader.readAll();
-            return csvData;
-        }
-    }
-
-    private Schema buildAvroSchema() {
-        // Define Avro schema
-        Schema schema = SchemaBuilder.record("CsvRecord").namespace("com.example")
-                .fields()
-                .name("col1").type().stringType().noDefault()
-                .name("col2").type().intType().noDefault()
-                .name("col3").type().doubleType().noDefault()
-                // Add more fields as needed
-                .endRecord();
-        return schema;
-    }
-
-    private File convertCsvToParquet(List<String[]> csvData, Schema avroSchema) throws IOException {
-        File parquetFile = File.createTempFile("output", ".parquet");
+        // Write Avro records to Parquet
+        File parquetFile = new File(parquetFilePath);
         try (ParquetWriter<GenericRecord> writer = AvroParquetWriter.<GenericRecord>builder(new org.apache.hadoop.fs.Path(parquetFile.getAbsolutePath()))
                 .withSchema(avroSchema)
                 .withConf(new org.apache.hadoop.conf.Configuration())
@@ -102,27 +52,28 @@ public class CsvToParquetS3Converter {
                 .build()) {
 
             // Convert CSV data to Avro GenericRecord and write to Parquet
-            for (String[] record : csvData) {
-                GenericRecord avroRecord = new GenericData.Record(avroSchema);
-                avroRecord.put("col1", record[0]);
-                avroRecord.put("col2", Integer.parseInt(record[1]));
-                avroRecord.put("col3", Double.parseDouble(record[2]));
-                // Add more fields if there are more columns in CSV
-
+            for (int i = 1; i < csvData.size(); i++) { // Start from index 1 to skip header row
+                String[] record = csvData.get(i);
+                GenericRecord avroRecord = convertCsvRecordToAvro(record, avroSchema);
                 writer.write(avroRecord);
             }
         }
-        return parquetFile;
     }
 
-    private void uploadFileToS3(String bucketName, String key, File file) throws SdkClientException {
-        // Initialize the S3 putObjectRequest
-        PutObjectRequest putObjectRequest = PutObjectRequest.builder()
-                .bucket(bucketName)
-                .key(key)
-                .build();
+    private static Schema buildAvroSchema(String[] headerRow) {
+        SchemaBuilder.FieldAssembler<Schema> schemaBuilder = SchemaBuilder.record("CsvRecord").namespace("com.example").fields();
+        for (String fieldName : headerRow) {
+            schemaBuilder = schemaBuilder.name(fieldName.trim()).type().stringType().noDefault();
+            // You can infer types more precisely based on the actual data if needed
+        }
+        return schemaBuilder.endRecord();
+    }
 
-        // Upload file to S3
-        s3Client.putObject(putObjectRequest, file.toPath());
+    private static GenericRecord convertCsvRecordToAvro(String[] csvRecord, Schema avroSchema) {
+        GenericRecordBuilder recordBuilder = new GenericRecordBuilder(avroSchema);
+        for (int i = 0; i < csvRecord.length; i++) {
+            recordBuilder.set(i, csvRecord[i]);
+        }
+        return recordBuilder.build();
     }
 }
