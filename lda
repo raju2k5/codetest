@@ -1,44 +1,91 @@
-public static ByteArrayOutputStream convertCsvToParquet(List<CSVRecord> records) throws IOException {
-        // Extract headers from the first record to create the Parquet schema dynamically
-        String[] headers = records.get(0).toMap().keySet().toArray(new String[0]);
+<dependencies>
+    <dependency>
+        <groupId>org.apache.parquet</groupId>
+        <artifactId>parquet-avro</artifactId>
+        <version>1.12.0</version> <!-- Replace with the latest version -->
+    </dependency>
+    <dependency>
+        <groupId>com.opencsv</groupId>
+        <artifactId>opencsv</artifactId>
+        <version>5.6</version> <!-- Replace with the latest version -->
+    </dependency>
+</dependencies>
 
-        // Define the Parquet schema dynamically
-        MessageType schema = Types.buildMessage()
-                .addFields(headers, Types.required(Types.binary()))
-                .named("CsvSchema");
 
-        // Prepare a ByteArrayOutputStream to hold Parquet data
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+import com.opencsv.CSVReader;
+import com.opencsv.exceptions.CsvException;
+import org.apache.avro.Schema;
+import org.apache.avro.SchemaBuilder;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.generic.GenericRecordBuilder;
+import org.apache.parquet.avro.AvroParquetWriter;
+import org.apache.parquet.hadoop.ParquetWriter;
+import org.apache.parquet.hadoop.metadata.CompressionCodecName;
 
-        // Configure GroupWriteSupport with schema
-        GroupWriteSupport writeSupport = new GroupWriteSupport();
-        writeSupport.setSchema(schema, new Configuration());
+import java.io.FileReader;
+import java.io.IOException;
+import java.util.List;
 
-        // Create ParquetWriter instance
-        ParquetWriter<Group> writer = new ParquetWriter<>(
-                new Path("inmemory"), // Output path (not used for in-memory write)
-                writeSupport, // GroupWriteSupport
-                ParquetWriter.DEFAULT_COMPRESSION_CODEC_NAME,
-                ParquetWriter.DEFAULT_BLOCK_SIZE,
-                ParquetWriter.DEFAULT_PAGE_SIZE,
-                ParquetWriter.MAX_PADDING_SIZE_DEFAULT,
-                false, // Enable dictionary encoding
-                false // Enable schema validation
-        );
+public class CsvToParquetConverter {
 
-        // Convert CSV records to Parquet Groups and write them to ParquetWriter
-        SimpleGroupFactory groupFactory = new SimpleGroupFactory(schema);
-        for (CSVRecord record : records) {
-            Group group = groupFactory.newGroup();
-            for (String header : headers) {
-                group.append(header, record.get(header));
-            }
-            writer.write(group);
+    public static void main(String[] args) {
+        String csvFilePath = "input.csv"; // Path to your CSV file
+        String parquetFilePath = "output.parquet"; // Path to output Parquet file
+
+        CsvToParquetConverter converter = new CsvToParquetConverter();
+        try {
+            converter.convertCsvToParquet(csvFilePath, parquetFilePath);
+            System.out.println("Conversion completed successfully.");
+        } catch (IOException | CsvException e) {
+            e.printStackTrace();
         }
-
-        // Close writer and ByteArrayOutputStream
-        writer.close();
-        baos.close();
-
-        return baos;
     }
+
+    public void convertCsvToParquet(String csvFilePath, String parquetFilePath) throws IOException, CsvException {
+        // Read CSV data
+        List<String[]> csvData = readCsv(csvFilePath);
+
+        // Define Avro schema
+        Schema avroSchema = buildAvroSchema();
+
+        // Define ParquetWriter
+        try (ParquetWriter<GenericRecord> writer = AvroParquetWriter.<GenericRecord>builder(new org.apache.hadoop.fs.Path(parquetFilePath))
+                .withSchema(avroSchema)
+                .withConf(new org.apache.hadoop.conf.Configuration())
+                .withCompressionCodec(CompressionCodecName.SNAPPY)
+                .build()) {
+
+            // Convert CSV data to Avro GenericRecord and write to Parquet
+            for (String[] record : csvData) {
+                GenericRecord avroRecord = new GenericData.Record(avroSchema);
+                // Example: Map CSV columns to Avro fields
+                avroRecord.put("col1", record[0]);
+                avroRecord.put("col2", Integer.parseInt(record[1]));
+                avroRecord.put("col3", Double.parseDouble(record[2]));
+                // Add more fields as needed
+
+                writer.write(avroRecord);
+            }
+        }
+    }
+
+    private List<String[]> readCsv(String csvFilePath) throws IOException, CsvException {
+        CSVReader csvReader = new CSVReader(new FileReader(csvFilePath));
+        List<String[]> csvData = csvReader.readAll();
+        csvReader.close();
+        return csvData;
+    }
+
+    private Schema buildAvroSchema() {
+        // Define Avro schema
+        Schema schema = SchemaBuilder.record("CsvRecord").namespace("com.example")
+                .fields()
+                .name("col1").type().stringType().noDefault()
+                .name("col2").type().intType().noDefault()
+                .name("col3").type().doubleType().noDefault()
+                // Add more fields as needed
+                .endRecord();
+        return schema;
+    }
+}
