@@ -1,17 +1,8 @@
-<dependencies>
-    <dependency>
-        <groupId>org.apache.parquet</groupId>
-        <artifactId>parquet-avro</artifactId>
-        <version>1.12.0</version> <!-- Replace with the latest version -->
-    </dependency>
-    <dependency>
-        <groupId>com.opencsv</groupId>
-        <artifactId>opencsv</artifactId>
-        <version>5.6</version> <!-- Replace with the latest version -->
-    </dependency>
-</dependencies>
-
-
+import com.amazonaws.SdkClientException;
+import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
+import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.AmazonS3ClientBuilder;
+import com.amazonaws.services.s3.model.*;
 import com.opencsv.CSVReader;
 import com.opencsv.exceptions.CsvException;
 import org.apache.avro.Schema;
@@ -23,55 +14,71 @@ import org.apache.parquet.avro.AvroParquetWriter;
 import org.apache.parquet.hadoop.ParquetWriter;
 import org.apache.parquet.hadoop.metadata.CompressionCodecName;
 
-import java.io.FileReader;
-import java.io.IOException;
+import java.io.*;
 import java.util.List;
 
-public class CsvToParquetConverter {
+public class CsvToParquetS3Converter {
+
+    private final AmazonS3 s3Client;
+
+    public CsvToParquetS3Converter() {
+        this.s3Client = AmazonS3ClientBuilder.standard()
+                .withCredentials(DefaultAWSCredentialsProviderChain.getInstance())
+                .build();
+    }
 
     public static void main(String[] args) {
-        String csvFilePath = "input.csv"; // Path to your CSV file
-        String parquetFilePath = "output.parquet"; // Path to output Parquet file
+        String bucketName = "your-s3-bucket-name";
+        String csvKey = "input.csv"; // Path to CSV file in S3
+        String parquetKey = "output.parquet"; // Path to output Parquet file in S3
 
-        CsvToParquetConverter converter = new CsvToParquetConverter();
+        CsvToParquetS3Converter converter = new CsvToParquetS3Converter();
         try {
-            converter.convertCsvToParquet(csvFilePath, parquetFilePath);
+            converter.convertCsvToParquetAndUpload(bucketName, csvKey, parquetKey);
             System.out.println("Conversion completed successfully.");
-        } catch (IOException | CsvException e) {
+        } catch (IOException | CsvException | SdkClientException e) {
             e.printStackTrace();
         }
     }
 
-    public void convertCsvToParquet(String csvFilePath, String parquetFilePath) throws IOException, CsvException {
+    public void convertCsvToParquetAndUpload(String bucketName, String csvKey, String parquetKey)
+            throws IOException, CsvException, SdkClientException {
+        // Download CSV file from S3
+        File csvFile = downloadFileFromS3(bucketName, csvKey);
+
         // Read CSV data
-        List<String[]> csvData = readCsv(csvFilePath);
+        List<String[]> csvData = readCsv(csvFile);
 
         // Define Avro schema
         Schema avroSchema = buildAvroSchema();
 
-        // Define ParquetWriter
-        try (ParquetWriter<GenericRecord> writer = AvroParquetWriter.<GenericRecord>builder(new org.apache.hadoop.fs.Path(parquetFilePath))
-                .withSchema(avroSchema)
-                .withConf(new org.apache.hadoop.conf.Configuration())
-                .withCompressionCodec(CompressionCodecName.SNAPPY)
-                .build()) {
+        // Convert CSV data to Parquet
+        File parquetFile = convertCsvToParquet(csvData, avroSchema);
 
-            // Convert CSV data to Avro GenericRecord and write to Parquet
-            for (String[] record : csvData) {
-                GenericRecord avroRecord = new GenericData.Record(avroSchema);
-                // Example: Map CSV columns to Avro fields
-                avroRecord.put("col1", record[0]);
-                avroRecord.put("col2", Integer.parseInt(record[1]));
-                avroRecord.put("col3", Double.parseDouble(record[2]));
-                // Add more fields as needed
+        // Upload Parquet file to S3
+        uploadFileToS3(bucketName, parquetKey, parquetFile);
 
-                writer.write(avroRecord);
-            }
-        }
+        // Clean up: delete temporary files
+        csvFile.delete();
+        parquetFile.delete();
     }
 
-    private List<String[]> readCsv(String csvFilePath) throws IOException, CsvException {
-        CSVReader csvReader = new CSVReader(new FileReader(csvFilePath));
+    private File downloadFileFromS3(String bucketName, String key) throws IOException, SdkClientException {
+        File file = File.createTempFile("temp", null);
+        S3Object object = s3Client.getObject(new GetObjectRequest(bucketName, key));
+        try (InputStream in = object.getObjectContent();
+             OutputStream out = new FileOutputStream(file)) {
+            byte[] buffer = new byte[8192];
+            int bytesRead;
+            while ((bytesRead = in.read(buffer)) != -1) {
+                out.write(buffer, 0, bytesRead);
+            }
+        }
+        return file;
+    }
+
+    private List<String[]> readCsv(File csvFile) throws IOException, CsvException {
+        CSVReader csvReader = new CSVReader(new FileReader(csvFile));
         List<String[]> csvData = csvReader.readAll();
         csvReader.close();
         return csvData;
@@ -88,4 +95,15 @@ public class CsvToParquetConverter {
                 .endRecord();
         return schema;
     }
-}
+
+    private File convertCsvToParquet(List<String[]> csvData, Schema avroSchema) throws IOException {
+        File parquetFile = File.createTempFile("output", ".parquet");
+        try (ParquetWriter<GenericRecord> writer = AvroParquetWriter.<GenericRecord>builder(new org.apache.hadoop.fs.Path(parquetFile.getAbsolutePath()))
+                .withSchema(avroSchema)
+                .withConf(new org.apache.hadoop.conf.Configuration())
+                .withCompressionCodec(CompressionCodecName.SNAPPY)
+                .build()) {
+
+            // Convert CSV data to Avro GenericRecord and write to Parquet
+            for (String[] record : csvData) {
+                GenericRe
