@@ -1,8 +1,8 @@
-import com.amazonaws.SdkClientException;
-import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3ClientBuilder;
-import com.amazonaws.services.s3.model.*;
+import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.*;
+
 import com.opencsv.CSVReader;
 import com.opencsv.exceptions.CsvException;
 import org.apache.avro.Schema;
@@ -19,11 +19,13 @@ import java.util.List;
 
 public class CsvToParquetS3Converter {
 
-    private final AmazonS3 s3Client;
+    private final S3Client s3Client;
 
     public CsvToParquetS3Converter() {
-        this.s3Client = AmazonS3ClientBuilder.standard()
-                .withCredentials(DefaultAWSCredentialsProviderChain.getInstance())
+        // Initialize S3 client
+        this.s3Client = S3Client.builder()
+                .region(Region.US_EAST_1)  // Replace with your desired AWS region
+                .credentialsProvider(DefaultCredentialsProvider.create())
                 .build();
     }
 
@@ -65,15 +67,11 @@ public class CsvToParquetS3Converter {
 
     private File downloadFileFromS3(String bucketName, String key) throws IOException, SdkClientException {
         File file = File.createTempFile("temp", null);
-        S3Object object = s3Client.getObject(new GetObjectRequest(bucketName, key));
-        try (InputStream in = object.getObjectContent();
-             OutputStream out = new FileOutputStream(file)) {
-            byte[] buffer = new byte[8192];
-            int bytesRead;
-            while ((bytesRead = in.read(buffer)) != -1) {
-                out.write(buffer, 0, bytesRead);
-            }
-        }
+        GetObjectRequest getObjectRequest = GetObjectRequest.builder()
+                .bucket(bucketName)
+                .key(key)
+                .build();
+        s3Client.getObject(getObjectRequest, ResponseTransformer.toFile(file));
         return file;
     }
 
@@ -106,4 +104,23 @@ public class CsvToParquetS3Converter {
 
             // Convert CSV data to Avro GenericRecord and write to Parquet
             for (String[] record : csvData) {
-                GenericRe
+                GenericRecord avroRecord = new GenericData.Record(avroSchema);
+                avroRecord.put("col1", record[0]);
+                avroRecord.put("col2", Integer.parseInt(record[1]));
+                avroRecord.put("col3", Double.parseDouble(record[2]));
+                // Add more fields if there are more columns in CSV
+
+                writer.write(avroRecord);
+            }
+        }
+        return parquetFile;
+    }
+
+    private void uploadFileToS3(String bucketName, String key, File file) throws SdkClientException {
+        PutObjectRequest putObjectRequest = PutObjectRequest.builder()
+                .bucket(bucketName)
+                .key(key)
+                .build();
+        s3Client.putObject(putObjectRequest, file.toPath());
+    }
+}
