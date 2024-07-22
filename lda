@@ -1,4 +1,3 @@
-package com.jpmc.gbiconvert.service;
 import com.opencsv.CSVReader;
 import com.opencsv.exceptions.CsvException;
 import org.apache.avro.Schema;
@@ -13,12 +12,9 @@ import org.springframework.stereotype.Service;
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.GetObjectRequest;
-import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
-import software.amazon.awssdk.core.sync.ResponseTransformer;
-import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
+import software.amazon.awssdk.core.sync.RequestBody;
 
 import java.io.*;
 import java.util.Arrays;
@@ -34,19 +30,19 @@ public class S3Service {
     }
 
     /**
-     * Reads CSV data from S3 bucket and converts it to Parquet format.
+     * Reads CSV data from S3 bucket, converts it to Parquet format,
+     * and uploads the Parquet file to S3.
      *
      * @param bucketName S3 bucket name
      * @param fileKey    S3 file key (object key)
      * @param jsonSchema JSON schema in String format
-     * @return File representing the converted Parquet file
      * @throws S3Exception  If there's an issue with S3 operations
      * @throws IOException  If there's an I/O issue
      * @throws CsvException If there's an issue with CSV parsing
      */
-    public File convertCsvToParquet(String bucketName, String fileKey, String jsonSchema) throws S3Exception, IOException, CsvException {
+    public void convertCsvToParquetAndUpload(String bucketName, String fileKey, String jsonSchema) throws S3Exception, IOException, CsvException {
         System.setProperty("hadoop.home.dir", "I:\\hadoop");
-        String CSVfilename = fileKey;
+
         // Read CSV data from S3
         List<String[]> csvData = readCsvFromS3(bucketName, fileKey);
 
@@ -54,9 +50,10 @@ public class S3Service {
         Schema avroSchema = buildAvroSchema(jsonSchema);
 
         // Convert CSV data to Parquet
-        File parquetFile = writeCsvToParquet(csvData, avroSchema);
+        byte[] parquetBytes = convertCsvToParquetBytes(csvData, avroSchema);
 
-        return parquetFile;
+        // Upload Parquet file to S3
+        uploadParquetToS3(bucketName, fileKey + ".parquet", parquetBytes);
     }
 
     /**
@@ -69,12 +66,10 @@ public class S3Service {
      * @throws SdkClientException If there's an issue with the AWS SDK client
      */
     private List<String[]> readCsvFromS3(String bucketName, String key) throws IOException, SdkClientException {
-        GetObjectRequest getObjectRequest = GetObjectRequest.builder()
+        ResponseInputStream<GetObjectResponse> objectStream = s3Client.getObject(GetObjectRequest.builder()
                 .bucket(bucketName)
                 .key(key)
-                .build();
-
-        ResponseInputStream<GetObjectResponse> objectStream = s3Client.getObject(getObjectRequest);
+                .build());
 
         try (Reader reader = new InputStreamReader(objectStream);
              CSVReader csvReader = new CSVReader(reader)) {
@@ -98,18 +93,17 @@ public class S3Service {
     }
 
     /**
-     * Converts CSV data to Parquet format using provided Avro schema.
+     * Converts CSV data to Parquet format using provided Avro schema and returns as bytes.
      *
      * @param csvData    List of String arrays representing CSV rows
      * @param avroSchema Avro Schema object
-     * @return File representing the converted Parquet file
+     * @return Byte array representing the converted Parquet file
      * @throws IOException If there's an I/O issue
      */
-    private File writeCsvToParquet(List<String[]> csvData, Schema avroSchema) throws IOException {
-        String tempFileName = "output_" + System.currentTimeMillis() + ".parquet";
-        File parquetFile = new File(tempFileName);
+    private byte[] convertCsvToParquetBytes(List<String[]> csvData, Schema avroSchema) throws IOException {
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
 
-        try (ParquetWriter<GenericRecord> writer = AvroParquetWriter.<GenericRecord>builder(new org.apache.hadoop.fs.Path(parquetFile.getAbsolutePath()))
+        try (ParquetWriter<GenericRecord> writer = AvroParquetWriter.<GenericRecord>builder(new Path("output.parquet"))
                 .withSchema(avroSchema)
                 .withConf(new org.apache.hadoop.conf.Configuration())
                 .withCompressionCodec(CompressionCodecName.SNAPPY)
@@ -142,6 +136,26 @@ public class S3Service {
             }
         }
 
-        return parquetFile;
+        return outputStream.toByteArray();
+    }
+
+    /**
+     * Uploads a Parquet file represented as bytes to an S3 bucket.
+     *
+     * @param bucketName S3 bucket name
+     * @param key        S3 file key (object key)
+     * @param data       Byte array representing Parquet file data
+     * @throws S3Exception If there's an issue with S3 operations
+     */
+    private void uploadParquetToS3(String bucketName, String key, byte[] data) throws S3Exception {
+        try {
+            s3Client.putObject(PutObjectRequest.builder()
+                    .bucket(bucketName)
+                    .key(key)
+                    .build(),
+                    RequestBody.fromBytes(data));
+        } catch (SdkClientException e) {
+            throw new S3Exception(e.getMessage(), e);
+        }
     }
 }
