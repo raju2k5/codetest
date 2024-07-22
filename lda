@@ -1,3 +1,19 @@
+package com.jpmc.gbiconvert.service;
+
+import java.io.*;
+
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
+import software.amazon.awssdk.core.ResponseBytes;
+import software.amazon.awssdk.core.ResponseInputStream;
+import software.amazon.awssdk.core.exception.SdkClientException;
+import software.amazon.awssdk.core.sync.ResponseTransformer;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.*;
+
 import com.opencsv.CSVReader;
 import com.opencsv.exceptions.CsvException;
 import org.apache.avro.Schema;
@@ -12,51 +28,100 @@ import org.apache.parquet.hadoop.metadata.CompressionCodecName;
 import java.io.*;
 import java.util.List;
 
-public class CsvToParquetConverter {
 
-    public static void main(String[] args) {
-        String csvFilePath = "path/to/your/csv/file.csv";
-        String parquetFilePath = "path/to/output/converted.parquet";
+@Service
+@Slf4j
+public class S3Service {
+    private S3Client s3Client;
+    private final ObjectService S3ServiceImpl;
 
+    @Autowired
+    public S3Service(ObjectService s3ServiceImpl, S3Client s3Client) {
+        S3ServiceImpl = s3ServiceImpl;
+        this.s3Client = s3Client;
+    }
+    /**
+     * S3 service to download the CSV file from user S3 bucket.
+     *
+     * @param bucketName:   User S3 bucket name
+     * @param fileKey: key of the file to be downloaded.
+     * @return list of strings containing contents of CSV file in the order-- >
+     * @throws IOException
+     */
+
+    public String[] DownloadCSVFromS3(String bucketName, String fileKey) throws S3Exception, IOException {
         try {
-            // Read CSV file
-            List<String[]> csvData = readCsv(csvFilePath);
+            ResponseBytes<GetObjectResponse> s3Obj = S3ServiceImpl.getObject(bucketName, fileKey);
+            BufferedReader reader = new BufferedReader(new InputStreamReader(s3Obj.asInputStream()));
 
-            // Infer schema and convert CSV to Parquet
-            convertCsvToParquet(csvData, parquetFilePath);
+            try {
+                // Get all the csv headers
+                String line = reader.readLine();
+                String[] headers = line.split(",");
 
-            System.out.println("Conversion completed successfully.");
+                // Get number of columns and print headers
+                int length = headers.length;
+                for (String header : headers) {
+                    System.out.print(header + "   ");
+                }
 
-        } catch (IOException | CsvException e) {
-            e.printStackTrace();
+                while((line = reader.readLine()) != null) {
+                    System.out.println();
+
+                    // get and print the next line (row)
+                    String[] row = line.split(",");
+                    for (String value : row) {
+                        System.out.print(value + "   ");
+                    }
+                }
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+            return null;
+        } catch (S3Exception e) {
+            log.error("S3Exception while Download Token File From S3. error details => {}:", e.getMessage());
+            throw e;
         }
     }
 
-    private static List<String[]> readCsv(String csvFilePath) throws IOException, CsvException {
-        CSVReader csvReader = new CSVReader(new FileReader(csvFilePath));
-        List<String[]> csvData = csvReader.readAll();
-        csvReader.close();
-        return csvData;
+
+    public String[] CSVtoParquet(String bucketName, String fileKey) throws S3Exception, IOException, CsvException {
+        try {
+            // ResponseInputStream<GetObjectResponse> s3Object = S3ServiceImpl.getObjects3(bucketName, fileKey);
+
+            // Read CSV data from S3
+            List<String[]> csvData = readCsvFromS3(bucketName, fileKey);
+
+
+            // Convert CSV data to Parquet
+            File parquetFile = convertCsvToParquet(csvData);
+
+            return null;
+        } catch (S3Exception | CsvException e) {
+            log.error("S3Exception while Download Token File From S3. error details => {}:", e.getMessage());
+            throw e;
+        }
     }
 
-    private static void convertCsvToParquet(List<String[]> csvData, String parquetFilePath) throws IOException {
-        // Infer Avro schema dynamically from CSV data
-        Schema avroSchema = buildAvroSchema(csvData.get(0)); // Assuming the first row contains headers
 
-        // Write Avro records to Parquet
-        File parquetFile = new File(parquetFilePath);
-        try (ParquetWriter<GenericRecord> writer = AvroParquetWriter.<GenericRecord>builder(new org.apache.hadoop.fs.Path(parquetFile.getAbsolutePath()))
-                .withSchema(avroSchema)
-                .withConf(new org.apache.hadoop.conf.Configuration())
-                .withCompressionCodec(CompressionCodecName.SNAPPY)
-                .build()) {
+    private List<String[]> readCsvFromS3(String bucketName, String key) throws IOException, CsvException, SdkClientException {
 
-            // Convert CSV data to Avro GenericRecord and write to Parquet
-            for (int i = 1; i < csvData.size(); i++) { // Start from index 1 to skip header row
-                String[] record = csvData.get(i);
-                GenericRecord avroRecord = convertCsvRecordToAvro(record, avroSchema);
-                writer.write(avroRecord);
-            }
+        // Create a request to get object from S3
+        GetObjectRequest getObjectRequest = GetObjectRequest.builder()
+                .bucket(bucketName)
+                .key(key)
+                .build();
+
+        // Get the object from S3 as a stream
+        ResponseInputStream<GetObjectResponse> objectStream = s3Client.getObject(getObjectRequest);
+
+        // Use try-with-resources to ensure stream closure
+
+        try (Reader reader = new InputStreamReader(objectStream);
+             CSVReader csvReader = new CSVReader(reader)) {
+            // Read all CSV rows and collect them into a List<String[]>
+            List<String[]> csvData = csvReader.readAll();
+            return csvData;
         }
     }
 
@@ -69,11 +134,27 @@ public class CsvToParquetConverter {
         return schemaBuilder.endRecord();
     }
 
-    private static GenericRecord convertCsvRecordToAvro(String[] csvRecord, Schema avroSchema) {
-        GenericRecordBuilder recordBuilder = new GenericRecordBuilder(avroSchema);
-        for (int i = 0; i < csvRecord.length; i++) {
-            recordBuilder.set(i, csvRecord[i]);
+    private File convertCsvToParquet(List<String[]> csvData) throws IOException {
+        // Infer Avro schema dynamically from CSV data
+        //System.setProperty("hadoop.home.dir", "C:/JPMC/DEV/TMP/hadoop/bin");
+        System.setProperty("hadoop.home.dir", "I:\\hadoop");
+
+        Schema avroSchema = buildAvroSchema(csvData.get(0)); // Assuming the first row contains headers
+
+        String tempFileName =  "output_" +System.currentTimeMillis()+ ".parquet";
+        File parquetFile = new File(tempFileName);
+        try (ParquetWriter<GenericRecord> writer = AvroParquetWriter.<GenericRecord>builder(new org.apache.hadoop.fs.Path(parquetFile.getAbsolutePath()))
+                .withSchema(avroSchema)
+                .withConf(new org.apache.hadoop.conf.Configuration())
+                .withCompressionCodec(CompressionCodecName.SNAPPY)
+                .build()) {
+
+            // Convert CSV data to Avro GenericRecord and write to Parquet
+            for (String[] record : csvData) {
+                GenericRecord avroRecord = new GenericData.Record(avroSchema);
+                writer.write(avroRecord);
+            }
         }
-        return recordBuilder.build();
+        return parquetFile;
     }
 }
