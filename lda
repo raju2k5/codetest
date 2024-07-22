@@ -164,3 +164,42 @@ private File writeCsvToParquet(List<String[]> csvData, Schema avroSchema) throws
 
     return parquetFile;
 }
+
+private File writeCsvToParquet(List<String[]> csvData, Schema avroSchema) throws IOException {
+    String tempFileName = "output_" + System.currentTimeMillis() + ".parquet";
+    File parquetFile = new File(tempFileName);
+
+    try (ParquetWriter<GenericRecord> writer = AvroParquetWriter.<GenericRecord>builder(new org.apache.hadoop.fs.Path(parquetFile.getAbsolutePath()))
+            .withSchema(avroSchema)
+            .withConf(new org.apache.hadoop.conf.Configuration())
+            .withCompressionCodec(CompressionCodecName.SNAPPY)
+            .build()) {
+
+        // Flag to skip the first row (header row)
+        boolean firstRow = true;
+
+        // Iterate through each row of CSV data
+        for (String[] record : csvData) {
+            if (firstRow) {
+                firstRow = false;
+                continue; // Skip header row
+            }
+
+            GenericRecord avroRecord = new GenericData.Record(avroSchema);
+
+            // Map CSV columns to Avro schema fields in the correct order
+            for (int i = 0; i < avroSchema.getFields().size(); i++) {
+                // Assuming here that the CSV columns are aligned with Avro schema fields by index
+                // You may need to adjust this logic based on your actual CSV structure and schema
+                avroRecord.put(i, record[i]);
+            }
+
+            writer.write(avroRecord);
+        }
+    }
+
+    return parquetFile;
+}
+
+
+
