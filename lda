@@ -121,3 +121,46 @@ public class S3Service {
     }
 }
 String jsonSchema = "{ \"type\": \"record\", \"name\": \"Example\", \"fields\": [ { \"name\": \"field1\", \"type\": \"string\" }, { \"name\": \"field2\", \"type\": \"int\" } ] }";
+
+
+
+
+
+
+try {
+            File parquetFile = s3Service.convertCsvToParquet(bucketName, fileKey, jsonSchema);
+            System.out.println("Parquet file created: " + parquetFile.getAbsolutePath());
+        } catch (S3Exception | IOException | CsvException e) {
+            e.printStackTrace();
+        }
+
+
+private File writeCsvToParquet(List<String[]> csvData, Schema avroSchema) throws IOException {
+    String tempFileName = "output_" + System.currentTimeMillis() + ".parquet";
+    File parquetFile = new File(tempFileName);
+
+    try (ParquetWriter<GenericRecord> writer = AvroParquetWriter.<GenericRecord>builder(new org.apache.hadoop.fs.Path(parquetFile.getAbsolutePath()))
+            .withSchema(avroSchema)
+            .withConf(new org.apache.hadoop.conf.Configuration())
+            .withCompressionCodec(CompressionCodecName.SNAPPY)
+            .build()) {
+
+        // Skip the first row (header row)
+        boolean firstRow = true;
+
+        for (String[] record : csvData) {
+            if (firstRow) {
+                firstRow = false;
+                continue; // Skip header row
+            }
+
+            GenericRecord avroRecord = new GenericData.Record(avroSchema);
+            for (int i = 0; i < avroSchema.getFields().size(); i++) {
+                avroRecord.put(i, record[i]);
+            }
+            writer.write(avroRecord);
+        }
+    }
+
+    return parquetFile;
+}
