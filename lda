@@ -120,3 +120,4 @@ public class S3Service {
         return parquetFile;
     }
 }
+String jsonSchema = "{ \"type\": \"record\", \"name\": \"Example\", \"fields\": [ { \"name\": \"field1\", \"type\": \"string\" }, { \"name\": \"field2\", \"type\": \"int\" } ] }";
