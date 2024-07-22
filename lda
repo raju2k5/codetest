@@ -203,3 +203,47 @@ private File writeCsvToParquet(List<String[]> csvData, Schema avroSchema) throws
 
 
 
+
+
+
+private File writeCsvToParquet(List<String[]> csvData, Schema avroSchema) throws IOException {
+    String tempFileName = "output_" + System.currentTimeMillis() + ".parquet";
+    File parquetFile = new File(tempFileName);
+
+    try (ParquetWriter<GenericRecord> writer = AvroParquetWriter.<GenericRecord>builder(new org.apache.hadoop.fs.Path(parquetFile.getAbsolutePath()))
+            .withSchema(avroSchema)
+            .withConf(new org.apache.hadoop.conf.Configuration())
+            .withCompressionCodec(CompressionCodecName.SNAPPY)
+            .build()) {
+
+        // Skip the first row (header row)
+        boolean firstRow = true;
+
+        for (String[] record : csvData) {
+            if (firstRow) {
+                firstRow = false;
+                continue; // Skip header row
+            }
+
+            GenericRecord avroRecord = new GenericData.Record(avroSchema);
+
+            // Map CSV columns to Avro schema fields by name
+            for (Schema.Field field : avroSchema.getFields()) {
+                String fieldName = field.name();
+
+                // Example: Assuming CSV headers match Avro field names
+                int columnIndex = Arrays.asList(csvData.get(0)).indexOf(fieldName);
+                String value = record[columnIndex];
+
+                // Add value to Avro record
+                avroRecord.put(fieldName, value);
+            }
+
+            writer.write(avroRecord);
+        }
+    }
+
+    return parquetFile;
+}
+
+
