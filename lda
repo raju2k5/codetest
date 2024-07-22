@@ -1,1 +1,11 @@
-'S3Exception(software.amazon.awssdk.services.s3.model.S3Exception.Builder)' has protected access in 'software.amazon.awssdk.services.s3.model.S3Exception'
+private void uploadParquetToS3(String bucketName, String key, File parquetFile) throws S3Exception {
+    try {
+        s3Client.putObject(PutObjectRequest.builder()
+                .bucket(bucketName)
+                .key(key)
+                .build(),
+                RequestBody.fromFile(parquetFile));
+    } catch (SdkClientException e) {
+        throw new S3Exception("Error uploading Parquet file to S3: " + e.getMessage(), e);
+    }
+}
