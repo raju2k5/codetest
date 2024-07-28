@@ -3,17 +3,17 @@ import com.opencsv.exceptions.CsvException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.SchemaBuilder;
 import org.apache.parquet.avro.AvroParquetWriter;
 import org.apache.parquet.hadoop.ParquetWriter;
 import org.apache.parquet.hadoop.metadata.CompressionCodecName;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.*;
-import software.amazon.awssdk.core.sync.RequestBody;
 
 import java.io.*;
 import java.util.Arrays;
@@ -21,6 +21,7 @@ import java.util.List;
 
 @Service
 public class S3Service {
+    private static final Logger logger = LoggerFactory.getLogger(S3Service.class);
     private final S3Client s3Client;
 
     @Autowired
@@ -35,26 +36,33 @@ public class S3Service {
      * @param bucketName S3 bucket name
      * @param fileKey    S3 file key (object key)
      * @param jsonSchema JSON schema in String format
-     * @throws S3Exception  If there's an issue with S3 operations
      * @throws IOException  If there's an I/O issue
      * @throws CsvException If there's an issue with CSV parsing
      */
-    public void convertCsvToParquetAndUpload(String bucketName, String fileKey, String jsonSchema) throws S3Exception, IOException, CsvException {
+    public void convertCsvToParquetAndUpload(String bucketName, String fileKey, String jsonSchema) throws IOException, CsvException {
         System.setProperty("hadoop.home.dir", "I:\\hadoop");
         String tempFileName = "output_" + System.currentTimeMillis() + ".parquet";
 
-        // Read CSV data from S3
-        List<String[]> csvData = readCsvFromS3(bucketName, fileKey);
+        try {
+            // Read CSV data from S3
+            List<String[]> csvData = readCsvFromS3(bucketName, fileKey);
 
-        // Build Avro schema from JSON schema
-        Schema avroSchema = buildAvroSchema(jsonSchema);
+            // Build Avro schema from JSON schema
+            Schema avroSchema = buildAvroSchema(jsonSchema);
 
-        // Convert CSV data to Parquet
-        File parquetFile = convertCsvToParquet(csvData, avroSchema, tempFileName);
+            // Convert CSV data to Parquet
+            File parquetFile = convertCsvToParquet(csvData, avroSchema, tempFileName);
 
-        // Upload Parquet file to S3
-        String parquetFileKey = filekey.replaceAll("\\.\\w+", "")
-        uploadParquetToS3(bucketName, fileKey + ".parquet", parquetBytes);
+            // Upload Parquet file to S3
+            String parquetFileKey = fileKey.replaceAll("\\.\\w+", "") + ".parquet";
+            uploadParquetToS3(bucketName, parquetFileKey, parquetFile, tempFileName);
+        } catch (SdkClientException e) {
+            logger.error("AWS SDK Client error: {}", e.getMessage());
+            throw e;
+        } catch (IOException | CsvException e) {
+            logger.error("Error during processing: {}", e.getMessage());
+            throw e;
+        }
     }
 
     /**
@@ -63,21 +71,25 @@ public class S3Service {
      * @param bucketName S3 bucket name
      * @param key        S3 file key (object key)
      * @return List of String arrays representing CSV rows
-     * @throws IOException    If there's an I/O issue
-     * @throws SdkClientException If there's an issue with the AWS SDK client
+     * @throws IOException If there's an I/O issue
      */
-    private List<String[]> readCsvFromS3(String bucketName, String key) throws IOException, SdkClientException {
+    private List<String[]> readCsvFromS3(String bucketName, String key) throws IOException {
         GetObjectRequest getObjectRequest = GetObjectRequest.builder()
                 .bucket(bucketName)
                 .key(key)
                 .build();
 
-        try (Reader reader = new InputStreamReader(objectStream);
+        try (ResponseInputStream<GetObjectResponse> objectStream = s3Client.getObject(getObjectRequest);
+             Reader reader = new InputStreamReader(objectStream);
              CSVReader csvReader = new CSVReader(reader)) {
-            List<String[]> csvData = csvReader.readAll();
-            return csvData;
+
+            return csvReader.readAll();
         } catch (CsvException e) {
-            throw new RuntimeException(e);
+            logger.error("Error reading CSV data: {}", e.getMessage());
+            throw new IOException("Error reading CSV data from S3", e);
+        } catch (SdkClientException e) {
+            logger.error("Error fetching CSV data from S3: {}", e.getMessage());
+            throw new IOException("Error fetching CSV data from S3", e);
         }
     }
 
@@ -89,8 +101,7 @@ public class S3Service {
      */
     private Schema buildAvroSchema(String jsonSchema) {
         Schema.Parser parser = new Schema.Parser();
-        Schema avroSchema = parser.parse(jsonSchema);
-        return avroSchema;
+        return parser.parse(jsonSchema);
     }
 
     /**
@@ -136,6 +147,9 @@ public class S3Service {
 
                 writer.write(avroRecord);
             }
+        } catch (IOException e) {
+            logger.error("Error writing Parquet file: {}", e.getMessage());
+            throw new IOException("Error converting CSV data to Parquet", e);
         }
 
         return parquetFile;
@@ -146,10 +160,10 @@ public class S3Service {
      *
      * @param bucketName S3 bucket name
      * @param key        S3 file key (object key)
-     * @param parquetdata File representing Parquet data
-     * @throws S3Exception If there's an issue with S3 operations
+     * @param parquetData File representing Parquet data
+     * @throws SdkClientException If there's an issue with S3 operations
      */
-    private void uploadParquetToS3(String bucketName, String key, File parquetData, String tempFileName) throws SdkClientException {
+    private void uploadParquetToS3(String bucketName, String key, File parquetData, String tempFileName) {
         try {
             s3Client.putObject(PutObjectRequest.builder()
                     .bucket(bucketName)
@@ -158,22 +172,23 @@ public class S3Service {
                     RequestBody.fromFile(parquetData));
             deleteSysParquetFile(tempFileName);
         } catch (SdkClientException e) {
-            throw new RuntimeException("Error uploading Parquet file to S3: " + e.getMessage(), e);
+            logger.error("Error uploading Parquet file to S3: {}", e.getMessage());
+            throw new RuntimeException("Error uploading Parquet file to S3", e);
         }
     }
 
-    private void deleteSysParquetFile(String parquetFileName){
-        File localParquetFile = new File((parquetFileName));
-        File localCrcFile = new File(("."+parquetFileName+".crc"));
-        if (localParquetFile.exists()){
-            if(localParquetFile.delete()){
-                System.out.println("Parquet deleted successfully");
-            }
+    private void deleteSysParquetFile(String parquetFileName) {
+        File localParquetFile = new File(parquetFileName);
+        File localCrcFile = new File("." + parquetFileName + ".crc");
+        if (localParquetFile.exists() && localParquetFile.delete()) {
+            logger.info("Parquet file deleted successfully");
+        } else {
+            logger.warn("Failed to delete Parquet file");
         }
-        if (localCrcFile.exists()){
-            if(localCrcFile.delete()){
-                System.out.println(".crc deleted successfully");
-            }
+        if (localCrcFile.exists() && localCrcFile.delete()) {
+            logger.info(".crc file deleted successfully");
+        } else {
+            logger.warn("Failed to delete .crc file");
         }
     }
 }
