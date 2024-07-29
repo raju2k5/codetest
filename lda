@@ -1,3 +1,4 @@
+
 import com.opencsv.CSVReader;
 import com.opencsv.exceptions.CsvException;
 import org.apache.avro.Schema;
@@ -229,7 +230,7 @@ public class S3ServiceLambdaHandler implements RequestHandler<Map<String, String
 
 
 
-
+---------------------------------------------
 
 To add this Lambda function as a module in your existing Terraform setup, you'll follow these steps:
 
@@ -409,3 +410,98 @@ Step 4: Verify the Deployment
     Check CloudWatch Logs: Ensure that the Lambda function executed successfully by checking the CloudWatch logs.
 
 With these steps, you can integrate the new Lambda function into your existing Terraform setup as a module, ensuring it follows your organization's rules and practices.
+
+---------------------------------------------
+To add variables for different environments (dev, test, prod) and use them in your Terraform configuration, follow these steps:
+
+    Organize your Terraform configuration to support multiple environments.
+    Define environment-specific variables.
+    Use these variables in your module configuration.
+
+Here's a detailed guide on how to do this.
+Step 1: Organize Your Terraform Configuration
+
+Organize your Terraform files into separate directories for each environment. This allows you to manage and deploy to different environments independently.
+
+sh
+
+mkdir -p envs/dev envs/test envs/prod
+
+Step 2: Define Environment-Specific Variables
+
+Create variable files for each environment. These files will contain the values specific to each environment.
+File: envs/dev/variables.tfvars
+
+hcl
+
+lambda_s3_bucket = "dev-lambda-bucket"
+lambda_s3_key    = "path/to/dev/jar-file.jar"
+s3_bucket_name   = "dev-csv-bucket-name"
+s3_key_prefix    = "dev/path/to/csv/files/"
+
+File: envs/test/variables.tfvars
+
+hcl
+
+lambda_s3_bucket = "test-lambda-bucket"
+lambda_s3_key    = "path/to/test/jar-file.jar"
+s3_bucket_name   = "test-csv-bucket-name"
+s3_key_prefix    = "test/path/to/csv/files/"
+
+File: envs/prod/variables.tfvars
+
+hcl
+
+lambda_s3_bucket = "prod-lambda-bucket"
+lambda_s3_key    = "path/to/prod/jar-file.jar"
+s3_bucket_name   = "prod-csv-bucket-name"
+s3_key_prefix    = "prod/path/to/csv/files/"
+
+Step 3: Update the Module to Use Variables
+
+Modify your main.tf in the root directory to include the module and to accept variables from the environment-specific variable files.
+File: main.tf
+
+hcl
+
+provider "aws" {
+  region = "us-east-1"  # Replace with your region
+}
+
+module "lambda_csv_to_parquet" {
+  source = "./modules/lambda_csv_to_parquet"
+
+  lambda_s3_bucket = var.lambda_s3_bucket
+  lambda_s3_key    = var.lambda_s3_key
+  s3_bucket_name   = var.s3_bucket_name
+  s3_key_prefix    = var.s3_key_prefix
+}
+
+Step 4: Create variables.tf for Common Variables
+
+Define variables in a variables.tf file in the root directory, which will be used by all environments.
+File: variables.tf
+
+hcl
+
+variable "lambda_s3_bucket" {
+  description = "S3 bucket where the Lambda JAR is stored"
+  type        = string
+}
+
+variable "lambda_s3_key" {
+  description = "Path to the Lambda JAR file in the S3 bucket"
+  type        = string
+}
+
+variable "s3_bucket_name" {
+  description = "Name of the S3 bucket containing the CSV files"
+  type        = string
+}
+
+variable "s3_key_prefix" {
+  description = "Prefix for CSV files in the S3 bucket"
+  type        = string
+}
+
+Step 5: Deploy to Different Environments
