@@ -1,25 +1,23 @@
- // Setup
+ @Test
+    public void testConvertCsvToParquetAndUpload_Success() throws IOException, CsvException {
+        // Setup
         String bucketName = "test-bucket";
         String fileKey = "test.csv";
         String jsonSchema = "{\"type\":\"record\",\"name\":\"Test\",\"fields\":[{\"name\":\"field1\",\"type\":\"string\"},{\"name\":\"field2\",\"type\":\"string\"}]}";
 
-        // Mock CSV data as a simple CSV content
+        // Simulate CSV data as a string
         String csvContent = "field1,field2\nvalue1,value2";
-        ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(csvContent.getBytes());
+        InputStream inputStream = new ByteArrayInputStream(csvContent.getBytes());
 
-        // Mock ResponseInputStream (simplified by using a real ByteArrayInputStream)
+        // Mock ResponseInputStream using a real InputStream
         GetObjectResponse getObjectResponse = mock(GetObjectResponse.class);
-        when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(new ResponseInputStream<>(getObjectResponse, byteArrayInputStream));
-
-        // Mocking file creation
-        File mockParquetFile = mock(File.class);
-        when(mockParquetFile.exists()).thenReturn(true);
-        when(mockParquetFile.delete()).thenReturn(true);
+        when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(new ResponseInputStream<>(getObjectResponse, inputStream));
 
         // Execute the method
         s3Service.convertCsvToParquetAndUpload(bucketName, fileKey, jsonSchema);
 
-        // Verify that the necessary S3 operations were called
+        // Verify that the S3Client methods were called
         verify(s3Client).getObject(any(GetObjectRequest.class));
         verify(s3Client).putObject(any(PutObjectRequest.class), any());
     }
+}
