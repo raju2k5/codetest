@@ -1,31 +1,25 @@
-@Test
-    public void testConvertCsvToParquetAndUpload_Success() throws IOException, CsvException {
-        // Setup
+ // Setup
         String bucketName = "test-bucket";
         String fileKey = "test.csv";
         String jsonSchema = "{\"type\":\"record\",\"name\":\"Test\",\"fields\":[{\"name\":\"field1\",\"type\":\"string\"},{\"name\":\"field2\",\"type\":\"string\"}]}";
 
-        // Mock CSV data
-        List<String[]> csvData = Arrays.asList(
-                new String[]{"field1", "field2"},
-                new String[]{"value1", "value2"}
-        );
-
-        // Create a simulated S3 response as a ByteArrayInputStream
+        // Mock CSV data as a simple CSV content
         String csvContent = "field1,field2\nvalue1,value2";
         ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(csvContent.getBytes());
-        ResponseInputStream<GetObjectResponse> responseInputStream = mock(ResponseInputStream.class);
-        when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(responseInputStream);
-        when(responseInputStream.read(any(byte[].class))).thenReturn(-1);
-        when(responseInputStream.getDelegateStream()).thenReturn(byteArrayInputStream);
 
-        // Use a real CSVReader to simulate reading the CSV content
-        try (CSVReader csvReader = new CSVReader(new InputStreamReader(byteArrayInputStream))) {
-            // Execute the method
-            s3Service.convertCsvToParquetAndUpload(bucketName, fileKey, jsonSchema);
+        // Mock ResponseInputStream (simplified by using a real ByteArrayInputStream)
+        GetObjectResponse getObjectResponse = mock(GetObjectResponse.class);
+        when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(new ResponseInputStream<>(getObjectResponse, byteArrayInputStream));
 
-            // Verify that the necessary S3 operations were called
-            verify(s3Client).getObject(any(GetObjectRequest.class));
-            verify(s3Client).putObject(any(PutObjectRequest.class), any());
-        }
+        // Mocking file creation
+        File mockParquetFile = mock(File.class);
+        when(mockParquetFile.exists()).thenReturn(true);
+        when(mockParquetFile.delete()).thenReturn(true);
+
+        // Execute the method
+        s3Service.convertCsvToParquetAndUpload(bucketName, fileKey, jsonSchema);
+
+        // Verify that the necessary S3 operations were called
+        verify(s3Client).getObject(any(GetObjectRequest.class));
+        verify(s3Client).putObject(any(PutObjectRequest.class), any());
     }
