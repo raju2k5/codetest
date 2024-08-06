@@ -1,4 +1,4 @@
- @Test
+@Test
     public void testConvertCsvToParquetAndUpload_Success() throws IOException, CsvException {
         // Setup
         String bucketName = "test-bucket";
@@ -9,15 +9,13 @@
         String csvContent = "field1,field2\nvalue1,value2";
         InputStream inputStream = new ByteArrayInputStream(csvContent.getBytes());
 
-        // Mock ResponseInputStream using a real InputStream
-        GetObjectResponse getObjectResponse = mock(GetObjectResponse.class);
-        when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(new ResponseInputStream<>(getObjectResponse, inputStream));
+        // Mock S3Client's getObject method to return a simulated InputStream
+        when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(inputStream);
 
         // Execute the method
         s3Service.convertCsvToParquetAndUpload(bucketName, fileKey, jsonSchema);
 
-        // Verify that the S3Client methods were called
+        // Verify that the S3Client's methods were called
         verify(s3Client).getObject(any(GetObjectRequest.class));
-        verify(s3Client).putObject(any(PutObjectRequest.class), any());
+        verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
     }
-}
