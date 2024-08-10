@@ -1,16 +1,152 @@
-<dependency>
-    <groupId>org.apache.hadoop</groupId>
-    <artifactId>hadoop-common</artifactId>
-    <version>3.3.0</version>
-    <scope>compile</scope>
-    <exclusions>
-        <exclusion>
-            <groupId>org.apache.hadoop</groupId>
-            <artifactId>hadoop-native</artifactId>
-        </exclusion>
-        <exclusion>
-            <groupId>org.apache.hadoop</groupId>
-            <artifactId>hadoop-openstack</artifactId>
-        </exclusion>
-    </exclusions>
-</dependency>
+
+import com.opencsv.CSVReader;
+import com.opencsv.exceptions.CsvException;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.parquet.avro.AvroParquetWriter;
+import org.apache.parquet.hadoop.ParquetWriter;
+import org.apache.parquet.hadoop.metadata.CompressionCodecName;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import software.amazon.awssdk.core.exception.SdkClientException;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.*;
+
+import java.io.*;
+import java.util.Arrays;
+import java.util.List;
+
+@Service
+public class S3Service {
+    private static final Logger logger = LoggerFactory.getLogger(S3Service.class);
+    private final S3Client s3Client;
+
+    @Autowired
+    public S3Service(S3Client s3Client) {
+        this.s3Client = s3Client;
+    }
+
+    public void convertCsvToParquetAndUpload(String bucketName, String fileKey, String jsonSchema) throws IOException, CsvException {
+        try {
+            // Read CSV data from S3
+            List<String[]> csvData = readCsvFromS3(bucketName, fileKey);
+
+            // Build Avro schema from JSON schema
+            Schema avroSchema = buildAvroSchema(jsonSchema);
+
+            // Convert CSV data to Parquet and get it as a byte array
+            byte[] parquetData = convertCsvToParquet(csvData, avroSchema);
+
+            // Upload Parquet data to S3
+            String parquetFileKey = fileKey.replaceAll("\\.\\w+", "") + ".parquet";
+            uploadParquetToS3(bucketName, parquetFileKey, parquetData);
+        } catch (SdkClientException e) {
+            logger.error("AWS SDK Client error: {}", e.getMessage());
+            throw e;
+        } catch (IOException | CsvException e) {
+            logger.error("Error during processing: {}", e.getMessage());
+            throw e;
+        }
+    }
+
+    private List<String[]> readCsvFromS3(String bucketName, String key) throws IOException {
+        GetObjectRequest getObjectRequest = GetObjectRequest.builder()
+                .bucket(bucketName)
+                .key(key)
+                .build();
+
+        try (ResponseInputStream<GetObjectResponse> objectStream = s3Client.getObject(getObjectRequest);
+             Reader reader = new InputStreamReader(objectStream);
+             CSVReader csvReader = new CSVReader(reader)) {
+
+            return csvReader.readAll();
+        } catch (CsvException e) {
+            logger.error("Error reading CSV data: {}", e.getMessage());
+            throw new IOException("Error reading CSV data from S3", e);
+        } catch (SdkClientException e) {
+            logger.error("Error fetching CSV data from S3: {}", e.getMessage());
+            throw new IOException("Error fetching CSV data from S3", e);
+        }
+    }
+
+    private Schema buildAvroSchema(String jsonSchema) {
+        Schema.Parser parser = new Schema.Parser();
+        return parser.parse(jsonSchema);
+    }
+
+    private byte[] convertCsvToParquet(List<String[]> csvData, Schema avroSchema) throws IOException {
+        try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+             ParquetWriter<GenericRecord> writer = AvroParquetWriter.<GenericRecord>builder(new org.apache.parquet.io.OutputFile() {
+                    @Override
+                    public PositionOutputStream create(long blockSizeHint) {
+                        return new org.apache.parquet.io.DelegatingPositionOutputStream(outputStream);
+                    }
+
+                    @Override
+                    public PositionOutputStream createOrOverwrite(long blockSizeHint) {
+                        return new org.apache.parquet.io.DelegatingPositionOutputStream(outputStream);
+                    }
+
+                    @Override
+                    public boolean supportsBlockSize() {
+                        return false;
+                    }
+                })
+                .withSchema(avroSchema)
+                .withConf(new org.apache.hadoop.conf.Configuration())
+                .withValidation(false)
+                .withCompressionCodec(CompressionCodecName.SNAPPY)
+                .build()) {
+
+            // Skip the first row (header row)
+            boolean firstRow = true;
+
+            for (String[] record : csvData) {
+                if (firstRow) {
+                    firstRow = false;
+                    continue; // Skip header row
+                }
+
+                GenericRecord avroRecord = new GenericData.Record(avroSchema);
+
+                // Map CSV columns to Avro schema fields by name
+                for (Schema.Field field : avroSchema.getFields()) {
+                    String fieldName = field.name();
+
+                    // Assuming CSV headers match Avro field names
+                    int columnIndex = Arrays.asList(csvData.get(0)).indexOf(fieldName);
+                    String value = record[columnIndex];
+
+                    // Add value to Avro record
+                    avroRecord.put(fieldName, value);
+                }
+
+                writer.write(avroRecord);
+            }
+
+            // Return the Parquet data as a byte array
+            return outputStream.toByteArray();
+
+        } catch (IOException e) {
+            logger.error("Error writing Parquet data: {}", e.getMessage());
+            throw new IOException("Error converting CSV data to Parquet", e);
+        }
+    }
+
+    private void uploadParquetToS3(String bucketName, String key, byte[] parquetData) {
+        try {
+            s3Client.putObject(PutObjectRequest.builder()
+                    .bucket(bucketName)
+                    .key(key)
+                    .build(),
+                    RequestBody.fromBytes(parquetData));
+
+        } catch (SdkClientException e) {
+            logger.error("Error uploading Parquet data to S3: {}", e.getMessage());
+            throw new RuntimeException("Error uploading Parquet data to S3", e);
+        }
+    }
+}
