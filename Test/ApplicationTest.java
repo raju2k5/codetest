@@ -1,22 +1,17 @@
-
-package com.example.demo; // Adjust the package name accordingly
-
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.context.ApplicationContext;
+import org.mockito.MockitoAnnotations;
 import org.springframework.boot.builder.SpringApplicationBuilder;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.ApplicationContext;
 
 import java.util.HashMap;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.*;
 
-@ExtendWith(MockitoExtension.class)
-@SpringBootTest
 public class ApplicationTest {
 
     @Mock
@@ -28,24 +23,44 @@ public class ApplicationTest {
     @InjectMocks
     private Application application;
 
-    @Test
-    void testApply() throws Exception {
-        // Arrange
-        Map<String, String> event = new HashMap<>();
-        event.put("sourceBucketName", "bucket-name");
-        event.put("sourceFileKey", "file-key");
-        event.put("destinationBucketName", "destination-bucket");
-        event.put("destinationFileKey", "destination-file");
-        event.put("fileTobeProcessed", "file-type");
-
+    @BeforeEach
+    void setUp() {
+        MockitoAnnotations.openMocks(this);
+        // Mock SpringApplicationBuilder to return a mocked ApplicationContext
+        SpringApplicationBuilder builder = mock(SpringApplicationBuilder.class);
+        when(builder.run(any())).thenReturn(applicationContext);
         when(applicationContext.getBean(Handler.class)).thenReturn(handler);
+    }
+
+    @Test
+    void testApply() {
+        // Prepare input
+        Map<String, String> event = new HashMap<>();
+        event.put("sourceBucketName", "my-source-bucket");
+        event.put("sourceFileKey", "gbi/party.csv");
+        event.put("destinationBucketName", "my-destination-bucket");
+        event.put("destinationFileKey", "gbi-report/");
+        event.put("fileTobeProcessed", "someFileType");
+
+        // Mock handler behavior
         when(handler.apply(event)).thenReturn(new HashMap<>());
 
-        // Act
+        // Call apply method
         Map<String, Object> result = application.apply(event);
 
-        // Assert
-        verify(applicationContext, times(1)).getBean(Handler.class);
-        verify(handler, times(1)).apply(event);
+        // Verify handler method invocation
+        verify(handler).apply(event);
+
+        // Assert the result
+        assertEquals(new HashMap<>(), result);
+    }
+
+    @Test
+    void testGetApplicationContext() {
+        // Directly call the method
+        ApplicationContext context = Application.getApplicationContext(new String[]{});
+
+        // Verify that it returns a non-null ApplicationContext
+        assertEquals(applicationContext, context);
     }
 }
