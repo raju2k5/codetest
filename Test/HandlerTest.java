@@ -50,7 +50,7 @@ public class HandlerTest {
         event.put("destinationFileKey", "gbi-report/");
         event.put("fileTobeProcessed", "someFileType");
 
-        doThrow(new RuntimeException("Exception during file conversion"))
+        doThrow(new RuntimeException("Exception occurred during file conversion. Please try again..."))
                 .when(snapshotService)
                 .convertCsvToParquetAndUpload(anyString(), anyString(), anyString(), anyString(), anyString());
 
@@ -59,6 +59,6 @@ public class HandlerTest {
             handler.apply(event);
         });
 
-        assertEquals("Exception occured during file convertion..", thrown.getMessage());
+        assertEquals("Exception occurred during file conversion. Please try again...", thrown.getMessage());
     }
 }
