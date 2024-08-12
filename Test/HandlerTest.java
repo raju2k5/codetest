@@ -9,9 +9,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.*;
 
 @SpringBootTest
 public class HandlerTest {
@@ -32,21 +31,21 @@ public class HandlerTest {
         // Arrange
         Map<String, String> event = new HashMap<>();
         event.put("sourceBucketName", "my-source-bucket");
-        event.put("sourceFileKey", "gbi/party.csv"); // Updated to include folder and file
+        event.put("sourceFileKey", "gbi/party.csv");
         event.put("destinationBucketName", "my-destination-bucket");
-        event.put("destinationFileKey", "gbi-report/"); // Updated to only include folder
+        event.put("destinationFileKey", "gbi-report/");
         event.put("fileTobeProcessed", "someFileType");
 
         // Mock behavior for SnapshotService methods
         doNothing().when(snapshotService).convertCsvToParquetAndUpload(
-                anyString(), anyString(), anyString(), anyString(), anyString());
+                eq("my-source-bucket"), eq("gbi/party.csv"), eq("someFileType"), eq("my-destination-bucket"), eq("gbi-report/"));
 
         // Act
         Map<String, Object> response = handler.apply(event);
 
         // Assert
         verify(snapshotService).convertCsvToParquetAndUpload(
-                anyString(), anyString(), anyString(), anyString(), anyString());
+                eq("my-source-bucket"), eq("gbi/party.csv"), eq("someFileType"), eq("my-destination-bucket"), eq("gbi-report/"));
         assertNotNull(response);
     }
 }
