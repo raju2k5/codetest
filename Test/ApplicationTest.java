@@ -26,7 +26,7 @@ public class ApplicationTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        // Mock SpringApplicationBuilder to return a mocked ApplicationContext
+        // Mock the SpringApplicationBuilder and its behavior
         SpringApplicationBuilder builder = mock(SpringApplicationBuilder.class);
         when(builder.run(any())).thenReturn(applicationContext);
         when(applicationContext.getBean(Handler.class)).thenReturn(handler);
@@ -43,7 +43,8 @@ public class ApplicationTest {
         event.put("fileTobeProcessed", "someFileType");
 
         // Mock handler behavior
-        when(handler.apply(event)).thenReturn(new HashMap<>());
+        Map<String, Object> expectedResponse = new HashMap<>();
+        when(handler.apply(event)).thenReturn(expectedResponse);
 
         // Call apply method
         Map<String, Object> result = application.apply(event);
@@ -52,7 +53,7 @@ public class ApplicationTest {
         verify(handler).apply(event);
 
         // Assert the result
-        assertEquals(new HashMap<>(), result);
+        assertEquals(expectedResponse, result);
     }
 
     @Test
