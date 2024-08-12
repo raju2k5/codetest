@@ -1,6 +1,6 @@
 public interface SnapshotService {
-    
-    void convertCsvToParquetAndUpload() throws CsvException, IOException;
+
+    void convertCsvToParquetAndUpload(String sourceBucketName, String sourceFileKey, String fileTobeProcessed, String destinationBucketName, String destinationFileKey) throws CsvException, IOException;
 
     String loadJsonSchema(String fileTobeProcessed) throws IOException;
 
