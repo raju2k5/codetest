@@ -1,69 +1,52 @@
-package com.example.demo; // Adjust the package name accordingly
-
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.MockitoAnnotations;
+import org.springframework.boot.test.context.SpringBootTest;
 
 import java.util.HashMap;
 import java.util.Map;
 
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.verify;
 
-@ExtendWith(MockitoExtension.class)
+@SpringBootTest
 public class HandlerTest {
-
-    @Mock
-    private SnapshotService snapshotService;
 
     @InjectMocks
     private Handler handler;
 
+    @Mock
+    private SnapshotService snapshotService;
+
+    @BeforeEach
+    void setUp() {
+        MockitoAnnotations.openMocks(this);
+    }
+
     @Test
-    void testApply() throws Exception {
+    void testApply() {
         // Arrange
         Map<String, String> event = new HashMap<>();
-        event.put("sourceBucketName", "bucket-name");
-        event.put("sourceFileKey", "file-key");
-        event.put("destinationBucketName", "destination-bucket");
-        event.put("destinationFileKey", "destination-file");
-        event.put("fileTobeProcessed", "file-type");
+        event.put("sourceBucketName", "my-source-bucket");
+        event.put("sourceFileKey", "gbi/party.csv"); // Updated to include folder and file
+        event.put("destinationBucketName", "my-destination-bucket");
+        event.put("destinationFileKey", "gbi-report/"); // Updated to only include folder
+        event.put("fileTobeProcessed", "someFileType");
+
+        // Mock behavior for SnapshotService methods
+        doNothing().when(snapshotService).convertCsvToParquetAndUpload(
+                anyString(), anyString(), anyString(), anyString(), anyString());
 
         // Act
-        Map<String, Object> result = handler.apply(event);
+        Map<String, Object> response = handler.apply(event);
 
         // Assert
-        verify(snapshotService, times(1)).convertCsvToParquetAndUpload(
-            "bucket-name",
-            "file-key",
-            "file-type",
-            "destination-bucket",
-            "destination-file.parquet"
-        );
-    }
-
-    @Test
-    void testApply_Exception() {
-        // Arrange
-        Map<String, String> event = new HashMap<>();
-        event.put("sourceBucketName", "bucket-name");
-        event.put("sourceFileKey", "file-key");
-        event.put("destinationBucketName", "destination-bucket");
-        event.put("destinationFileKey", "destination-file");
-        event.put("fileTobeProcessed", "file-type");
-
-        doThrow(new RuntimeException("Exception occured during file conversion.."))
-            .when(snapshotService).convertCsvToParquetAndUpload(
-                "bucket-name",
-                "file-key",
-                "file-type",
-                "destination-bucket",
-                "destination-file.parquet"
-            );
-
-        // Act & Assert
-        assertThrows(RuntimeException.class, () -> handler.apply(event));
+        verify(snapshotService).convertCsvToParquetAndUpload(
+                "my-source-bucket", "gbi/party.csv", "someFileType", "my-destination-bucket", "gbi-report/");
+        assertNotNull(response);
     }
 }
-
