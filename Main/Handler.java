@@ -28,11 +28,10 @@ public class Handler {
         String destinationFileKey = event.get(DESTINATION_FILE_KEY);
         String fileTobeProcessed = event.get(PROCESS_FILE_NAME);
 
-        String jsonSchema = "";
-
 
         try{
-            S3Service.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, jsonSchema);
+            snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey);
+            log.info("Snapshot load completed scuccessfully for => {}", fileTobeProcessed);
         } catch (Exception e){
             throw new RuntimeException("Exception occured during file convertion..")
         }
