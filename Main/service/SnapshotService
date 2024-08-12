@@ -1,0 +1,15 @@
+public interface SnapshotService {
+    
+    void convertCsvToParquetAndUpload() throws CsvException, IOException;
+
+    String loadJsonSchema(String fileTobeProcessed) throws IOException;
+
+    List<String[]> readCsvFromS3(String bucketName, String key) throws IOException;
+
+    File convertCsvToParquet(List<String[]> csvData, Schema avroSchema, String fileName) throws IOException;
+
+    void uploadParquetToS3(String bucketName, String key, File parquetData, String tempFileName);
+
+    void deleteSysParquetFile(String parquetFileName);
+
+}
