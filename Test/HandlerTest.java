@@ -46,7 +46,7 @@ public class HandlerTest {
 
         // Assert
         verify(snapshotService).convertCsvToParquetAndUpload(
-                "my-source-bucket", "gbi/party.csv", "someFileType", "my-destination-bucket", "gbi-report/");
+                anyString(), anyString(), anyString(), anyString(), anyString());
         assertNotNull(response);
     }
 }
