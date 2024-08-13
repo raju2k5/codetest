@@ -5,17 +5,22 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ApplicationContext;
+import org.springframework.context.ConfigurableApplicationContext;
 
 import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-public class ApplicationTest {
+class ApplicationTest {
 
     @Mock
-    private ApplicationContext applicationContext;
+    private SpringApplicationBuilder springApplicationBuilder;
+
+    @Mock
+    private ConfigurableApplicationContext configurableApplicationContext;
 
     @Mock
     private Handler handler;
@@ -26,42 +31,30 @@ public class ApplicationTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        // Mock the SpringApplicationBuilder and its behavior
-        SpringApplicationBuilder builder = mock(SpringApplicationBuilder.class);
-        when(builder.run(any())).thenReturn(applicationContext);
-        when(applicationContext.getBean(Handler.class)).thenReturn(handler);
+        when(springApplicationBuilder.run(any(String[].class))).thenReturn(configurableApplicationContext);
+        when(configurableApplicationContext.getBean(Handler.class)).thenReturn(handler);
     }
 
     @Test
     void testApply() {
-        // Prepare input
         Map<String, String> event = new HashMap<>();
-        event.put("sourceBucketName", "my-source-bucket");
-        event.put("sourceFileKey", "gbi/party.csv");
-        event.put("destinationBucketName", "my-destination-bucket");
-        event.put("destinationFileKey", "gbi-report/");
-        event.put("fileTobeProcessed", "someFileType");
-
-        // Mock handler behavior
         Map<String, Object> expectedResponse = new HashMap<>();
         when(handler.apply(event)).thenReturn(expectedResponse);
 
-        // Call apply method
-        Map<String, Object> result = application.apply(event);
+        Map result = application.apply(event);
 
-        // Verify handler method invocation
-        verify(handler).apply(event);
-
-        // Assert the result
         assertEquals(expectedResponse, result);
+        verify(handler).apply(event);
+        verify(configurableApplicationContext).getBean(Handler.class);
     }
 
     @Test
     void testGetApplicationContext() {
-        // Directly call the method
-        ApplicationContext context = Application.getApplicationContext(new String[]{});
+        String[] args = {};
+        when(springApplicationBuilder.run(args)).thenReturn(configurableApplicationContext);
 
-        // Verify that it returns a non-null ApplicationContext
-        assertEquals(applicationContext, context);
+        ApplicationContext context = Application.getapplicationcontext(args);
+
+        assertEquals(configurableApplicationContext, context);
     }
 }
