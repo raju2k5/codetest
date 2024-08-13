@@ -64,16 +64,11 @@ class SnapshotServiceImplTest {
         when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(responseInputStream);
         when(responseInputStream.read(any(byte[].class))).thenReturn(-1); // Simulate end of stream
         when(csvReader.readAll()).thenReturn(csvData);
-        doNothing().when(s3Client).putObject(putObjectRequestCaptor.capture(), any(RequestBody.class));
+        when(snapshotService.loadJsonSchema(fileTobeProcessed)).thenReturn("{\"type\": \"record\", \"name\": \"TestSchema\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}");
 
         // Mocking Avro schema and Parquet writer
-        String jsonSchema = "{\"type\": \"record\", \"name\": \"TestSchema\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}";
-        Schema avroSchema = new Schema.Parser().parse(jsonSchema);
-        when(snapshotService.loadJsonSchema(fileTobeProcessed)).thenReturn(jsonSchema);
-
-        // Mock ParquetWriter
+        Schema avroSchema = new Schema.Parser().parse(snapshotService.loadJsonSchema(fileTobeProcessed));
         ParquetWriter<GenericRecord> parquetWriter = mock(ParquetWriter.class);
-        doNothing().when(parquetWriter).write(any(GenericRecord.class));
 
         // When
         snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey);
@@ -87,20 +82,7 @@ class SnapshotServiceImplTest {
     }
 
     @Test
-    void testLoadJsonSchema_FileNotFound() {
-        String fileTobeProcessed = "nonExistentFile";
-        Exception exception = assertThrows(FileNotFoundException.class, () -> {
-            snapshotService.loadJsonSchema(fileTobeProcessed);
-        });
-
-        String expectedMessage = "Schema file not found";
-        String actualMessage = exception.getMessage();
-
-        assertTrue(actualMessage.contains(expectedMessage));
-    }
-
-    @Test
-    void testConvertCsvToParquet_InvalidCsvHeader() {
+    void testConvertCsvToParquet_InvalidCsvHeader() throws Exception {
         // Given
         String sourceBucketName = "source-bucket";
         String sourceFileKey = "gbi/party.csv";
@@ -116,11 +98,11 @@ class SnapshotServiceImplTest {
         when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(responseInputStream);
         when(responseInputStream.read(any(byte[].class))).thenReturn(-1); // Simulate end of stream
         when(csvReader.readAll()).thenReturn(csvData);
-        doNothing().when(s3Client).putObject(putObjectRequestCaptor.capture(), any(RequestBody.class));
+        when(snapshotService.loadJsonSchema(fileTobeProcessed)).thenReturn("{\"type\": \"record\", \"name\": \"TestSchema\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}");
 
-        String jsonSchema = "{\"type\": \"record\", \"name\": \"TestSchema\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}";
-        Schema avroSchema = new Schema.Parser().parse(jsonSchema);
-        when(snapshotService.loadJsonSchema(fileTobeProcessed)).thenReturn(jsonSchema);
+        // Mocking Avro schema and Parquet writer
+        Schema avroSchema = new Schema.Parser().parse(snapshotService.loadJsonSchema(fileTobeProcessed));
+        ParquetWriter<GenericRecord> parquetWriter = mock(ParquetWriter.class);
 
         // When
         Exception exception = assertThrows(IOException.class, () -> {
@@ -130,5 +112,18 @@ class SnapshotServiceImplTest {
         // Then
         verify(s3Client).getObject(any(GetObjectRequest.class));
         assertTrue(exception.getMessage().contains("CSV header 'header1' not found for Avro field 'header1'"));
+    }
+
+    @Test
+    void testLoadJsonSchema_FileNotFound() {
+        String fileTobeProcessed = "nonExistentFile";
+        Exception exception = assertThrows(FileNotFoundException.class, () -> {
+            snapshotService.loadJsonSchema(fileTobeProcessed);
+        });
+
+        String expectedMessage = "Schema file not found";
+        String actualMessage = exception.getMessage();
+
+        assertTrue(actualMessage.contains(expectedMessage));
     }
 }
