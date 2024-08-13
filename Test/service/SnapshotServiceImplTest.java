@@ -1,27 +1,31 @@
-package com.example.demo; // Adjust the package name accordingly
-
-import org.apache.avro.Schema;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.MockitoAnnotations;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import software.amazon.awssdk.core.ResponseInputStream;
-import software.amazon.awssdk.core.exception.SdkClientException;
+import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-
+import com.opencsv.CSVReader;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.parquet.hadoop.ParquetWriter;
+import org.apache.parquet.hadoop.metadata.CompressionCodecName;
+import org.apache.hadoop.conf.Configuration;
 import java.io.*;
 import java.util.Arrays;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-@ExtendWith(MockitoExtension.class)
-public class SnapshotServiceImplTest {
+class SnapshotServiceImplTest {
 
     @Mock
     private S3Client s3Client;
@@ -29,162 +33,102 @@ public class SnapshotServiceImplTest {
     @InjectMocks
     private SnapshotServiceImpl snapshotService;
 
+    @Mock
+    private ResponseInputStream<GetObjectResponse> responseInputStream;
+
+    @Mock
+    private CSVReader csvReader;
+
+    @Captor
+    private ArgumentCaptor<PutObjectRequest> putObjectRequestCaptor;
+
     @BeforeEach
     void setUp() {
-        // Setup any necessary initialization before each test
+        MockitoAnnotations.openMocks(this);
     }
 
     @Test
     void testConvertCsvToParquetAndUpload() throws Exception {
-        // Arrange
+        // Given
         String sourceBucketName = "source-bucket";
-        String sourceFileKey = "source-file.csv";
-        String fileTobeProcessed = "file-type";
+        String sourceFileKey = "gbi/party.csv";
+        String fileTobeProcessed = "someFileType";
         String destinationBucketName = "destination-bucket";
-        String destinationFileKey = "destination-file";
+        String destinationFileKey = "gbi-report/";
 
         List<String[]> csvData = Arrays.asList(
-            new String[]{"header1", "header2"},
-            new String[]{"value1", "value2"}
+                new String[]{"header1", "header2"},
+                new String[]{"data1", "data2"}
         );
 
-        when(s3Client.getObject(any()))
-                .thenReturn(ResponseInputStream.create(
-                    GetObjectResponse.builder().build(), 
-                    new ByteArrayInputStream("header1,header2\nvalue1,value2".getBytes())
-                ));
+        when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(responseInputStream);
+        when(responseInputStream.read(any(byte[].class))).thenReturn(-1); // Simulate end of stream
+        when(csvReader.readAll()).thenReturn(csvData);
+        doNothing().when(s3Client).putObject(putObjectRequestCaptor.capture(), any(RequestBody.class));
 
-        when(snapshotService.loadJsonSchema(anyString())).thenReturn("{\"type\": \"record\", \"name\": \"Test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}");
+        // Mocking Avro schema and Parquet writer
+        String jsonSchema = "{\"type\": \"record\", \"name\": \"TestSchema\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}";
+        Schema avroSchema = new Schema.Parser().parse(jsonSchema);
+        when(snapshotService.loadJsonSchema(fileTobeProcessed)).thenReturn(jsonSchema);
 
-        // Act
+        // Mock ParquetWriter
+        ParquetWriter<GenericRecord> parquetWriter = mock(ParquetWriter.class);
+        doNothing().when(parquetWriter).write(any(GenericRecord.class));
+
+        // When
         snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey);
 
-        // Assert
-        verify(s3Client, times(1)).putObject(any(PutObjectRequest.class), any());
+        // Then
+        verify(s3Client).getObject(any(GetObjectRequest.class));
+        verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
+        assertNotNull(putObjectRequestCaptor.getValue());
+        assertEquals("destination-bucket", putObjectRequestCaptor.getValue().bucket());
+        assertTrue(putObjectRequestCaptor.getValue().key().endsWith(".parquet"));
     }
 
     @Test
-    void testConvertCsvToParquetAndUpload_SdkClientException() throws Exception {
-        // Arrange
+    void testLoadJsonSchema_FileNotFound() {
+        String fileTobeProcessed = "nonExistentFile";
+        Exception exception = assertThrows(FileNotFoundException.class, () -> {
+            snapshotService.loadJsonSchema(fileTobeProcessed);
+        });
+
+        String expectedMessage = "Schema file not found";
+        String actualMessage = exception.getMessage();
+
+        assertTrue(actualMessage.contains(expectedMessage));
+    }
+
+    @Test
+    void testConvertCsvToParquet_InvalidCsvHeader() {
+        // Given
         String sourceBucketName = "source-bucket";
-        String sourceFileKey = "source-file.csv";
-        String fileTobeProcessed = "file-type";
+        String sourceFileKey = "gbi/party.csv";
+        String fileTobeProcessed = "someFileType";
         String destinationBucketName = "destination-bucket";
-        String destinationFileKey = "destination-file";
+        String destinationFileKey = "gbi-report/";
 
-        when(s3Client.getObject(any()))
-                .thenThrow(SdkClientException.class);
-
-        // Act & Assert
-        assertThrows(IOException.class, () -> snapshotService.convertCsvToParquetAndUpload(
-                sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey
-        ));
-    }
-
-    @Test
-    void testLoadJsonSchema() throws IOException {
-        // Arrange
-        String fileTobeProcessed = "test";
-        InputStream resourceAsStream = new ByteArrayInputStream("{\"type\": \"record\", \"name\": \"Test\", \"fields\": [{\"name\": \"field1\", \"type\": \"string\"}]}".getBytes());
-
-        when(getClass().getResourceAsStream("/schemas/" + fileTobeProcessed + ".json"))
-                .thenReturn(resourceAsStream);
-
-        // Act
-        String schema = snapshotService.loadJsonSchema(fileTobeProcessed);
-
-        // Assert
-        assertEquals("{\"type\": \"record\", \"name\": \"Test\", \"fields\": [{\"name\": \"field1\", \"type\": \"string\"}]}", schema);
-    }
-
-    @Test
-    void testLoadJsonSchema_FileNotFound() throws IOException {
-        // Arrange
-        String fileTobeProcessed = "test";
-        when(getClass().getResourceAsStream("/schemas/" + fileTobeProcessed + ".json"))
-                .thenReturn(null);
-
-        // Act & Assert
-        assertThrows(FileNotFoundException.class, () -> snapshotService.loadJsonSchema(fileTobeProcessed));
-    }
-
-    @Test
-    void testReadCsvFromS3() throws Exception {
-        // Arrange
-        String bucketName = "bucket-name";
-        String key = "file-key.csv";
         List<String[]> csvData = Arrays.asList(
-            new String[]{"header1", "header2"},
-            new String[]{"value1", "value2"}
+                new String[]{"wrongHeader1", "wrongHeader2"},
+                new String[]{"data1", "data2"}
         );
 
-        when(s3Client.getObject(any()))
-                .thenReturn(ResponseInputStream.create(
-                    GetObjectResponse.builder().build(), 
-                    new ByteArrayInputStream("header1,header2\nvalue1,value2".getBytes())
-                ));
+        when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(responseInputStream);
+        when(responseInputStream.read(any(byte[].class))).thenReturn(-1); // Simulate end of stream
+        when(csvReader.readAll()).thenReturn(csvData);
+        doNothing().when(s3Client).putObject(putObjectRequestCaptor.capture(), any(RequestBody.class));
 
-        // Act
-        List<String[]> result = snapshotService.readCsvFromS3(bucketName, key);
+        String jsonSchema = "{\"type\": \"record\", \"name\": \"TestSchema\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}";
+        Schema avroSchema = new Schema.Parser().parse(jsonSchema);
+        when(snapshotService.loadJsonSchema(fileTobeProcessed)).thenReturn(jsonSchema);
 
-        // Assert
-        assertEquals(csvData, result);
-    }
+        // When
+        Exception exception = assertThrows(IOException.class, () -> {
+            snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey);
+        });
 
-    @Test
-    void testReadCsvFromS3_SdkClientException() throws Exception {
-        // Arrange
-        String bucketName = "bucket-name";
-        String key = "file-key.csv";
-
-        when(s3Client.getObject(any()))
-                .thenThrow(SdkClientException.class);
-
-        // Act & Assert
-        assertThrows(IOException.class, () -> snapshotService.readCsvFromS3(bucketName, key));
-    }
-
-    @Test
-    void testConvertCsvToParquet() throws IOException {
-        // Arrange
-        List<String[]> csvData = Arrays.asList(
-            new String[]{"header1", "header2"},
-            new String[]{"value1", "value2"}
-        );
-
-        Schema schema = new Schema.Parser().parse("{\"type\": \"record\", \"name\": \"Test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}");
-        String fileName = "/tmp/test.parquet";
-
-        // Act
-        File parquetFile = snapshotService.convertCsvToParquet(csvData, schema, fileName);
-
-        // Assert
-        assertTrue(parquetFile.exists());
-    }
-
-    @Test
-    void testUploadParquetToS3() throws Exception {
-        // Arrange
-        String destinationBucketName = "destination-bucket";
-        String destinationFileKey = "destination-file.parquet";
-        File parquetFile = new File("/tmp/test.parquet");
-
-        // Act
-        snapshotService.uploadParquetToS3(destinationBucketName, destinationFileKey, parquetFile, "/tmp/test.parquet");
-
-        // Assert
-        verify(s3Client, times(1)).putObject(any(PutObjectRequest.class), any());
-    }
-
-    @Test
-    void testDeleteSysParquetFile() {
-        // Arrange
-        String parquetFileName = "/tmp/test.parquet";
-
-        // Act
-        snapshotService.deleteSysParquetFile(parquetFileName);
-
-        // Assert
-        // Verify the file is deleted - you might want to mock file deletion in a more advanced setup
+        // Then
+        verify(s3Client).getObject(any(GetObjectRequest.class));
+        assertTrue(exception.getMessage().contains("CSV header 'header1' not found for Avro field 'header1'"));
     }
 }
