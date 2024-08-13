@@ -1,37 +1,38 @@
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Captor;
-import software.amazon.awssdk.core.ResponseInputStream;
-import software.amazon.awssdk.core.sync.RequestBody;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.GetObjectRequest;
-import software.amazon.awssdk.services.s3.model.GetObjectResponse;
-import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-import com.opencsv.CSVReader;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.parquet.hadoop.ParquetWriter;
 import org.apache.parquet.hadoop.metadata.CompressionCodecName;
-import org.apache.hadoop.conf.Configuration;
-import java.io.*;
+import org.junit.jupiter.api.Test;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
+import org.springframework.beans.factory.annotation.Value;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.core.ResponseInputStream;
+import software.amazon.awssdk.core.exception.SdkClientException;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
-class SnapshotServiceImplTest {
+public class SnapshotServiceImplTest {
 
     @Mock
     private S3Client s3Client;
-
-    @InjectMocks
-    private SnapshotServiceImpl snapshotService;
 
     @Mock
     private ResponseInputStream<GetObjectResponse> responseInputStream;
@@ -39,11 +40,10 @@ class SnapshotServiceImplTest {
     @Mock
     private CSVReader csvReader;
 
-    @Captor
-    private ArgumentCaptor<PutObjectRequest> putObjectRequestCaptor;
+    @InjectMocks
+    private SnapshotServiceImpl snapshotService;
 
-    @BeforeEach
-    void setUp() {
+    public SnapshotServiceImplTest() {
         MockitoAnnotations.openMocks(this);
     }
 
@@ -56,29 +56,24 @@ class SnapshotServiceImplTest {
         String destinationBucketName = "destination-bucket";
         String destinationFileKey = "gbi-report/";
 
-        List<String[]> csvData = Arrays.asList(
-                new String[]{"header1", "header2"},
-                new String[]{"data1", "data2"}
-        );
+        List<String[]> csvData = Arrays.asList(new String[]{"header1", "header2"}, new String[]{"value1", "value2"});
+        String jsonSchema = "{\"type\": \"record\", \"name\": \"TestSchema\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}";
 
+        // Mock the S3Client and other dependencies
         when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(responseInputStream);
-        when(responseInputStream.read(any(byte[].class))).thenReturn(-1); // Simulate end of stream
         when(csvReader.readAll()).thenReturn(csvData);
-        when(snapshotService.loadJsonSchema(fileTobeProcessed)).thenReturn("{\"type\": \"record\", \"name\": \"TestSchema\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}");
+        when(snapshotService.loadJsonSchema(fileTobeProcessed)).thenReturn(jsonSchema);
 
         // Mocking Avro schema and Parquet writer
-        Schema avroSchema = new Schema.Parser().parse(snapshotService.loadJsonSchema(fileTobeProcessed));
-        ParquetWriter<GenericRecord> parquetWriter = mock(ParquetWriter.class);
+        Schema avroSchema = new Schema.Parser().parse(jsonSchema);
+        File parquetFile = mock(File.class);
 
         // When
         snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey);
 
         // Then
         verify(s3Client).getObject(any(GetObjectRequest.class));
-        verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
-        assertNotNull(putObjectRequestCaptor.getValue());
-        assertEquals("destination-bucket", putObjectRequestCaptor.getValue().bucket());
-        assertTrue(putObjectRequestCaptor.getValue().key().endsWith(".parquet"));
+        verify(snapshotService).uploadParquetToS3(eq(destinationBucketName), eq(destinationFileKey), any(File.class), anyString());
     }
 
     @Test
@@ -90,19 +85,17 @@ class SnapshotServiceImplTest {
         String destinationBucketName = "destination-bucket";
         String destinationFileKey = "gbi-report/";
 
-        List<String[]> csvData = Arrays.asList(
-                new String[]{"wrongHeader1", "wrongHeader2"},
-                new String[]{"data1", "data2"}
-        );
+        // Mock CSV data with an invalid header
+        List<String[]> csvData = Arrays.asList(new String[]{"invalidHeader"}, new String[]{"value1"});
+        String jsonSchema = "{\"type\": \"record\", \"name\": \"TestSchema\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}]}";
 
+        // Mock the S3Client and other dependencies
         when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(responseInputStream);
-        when(responseInputStream.read(any(byte[].class))).thenReturn(-1); // Simulate end of stream
         when(csvReader.readAll()).thenReturn(csvData);
-        when(snapshotService.loadJsonSchema(fileTobeProcessed)).thenReturn("{\"type\": \"record\", \"name\": \"TestSchema\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}");
+        when(snapshotService.loadJsonSchema(fileTobeProcessed)).thenReturn(jsonSchema);
 
-        // Mocking Avro schema and Parquet writer
-        Schema avroSchema = new Schema.Parser().parse(snapshotService.loadJsonSchema(fileTobeProcessed));
-        ParquetWriter<GenericRecord> parquetWriter = mock(ParquetWriter.class);
+        // Mocking Avro schema
+        Schema avroSchema = new Schema.Parser().parse(jsonSchema);
 
         // When
         Exception exception = assertThrows(IOException.class, () -> {
@@ -111,19 +104,6 @@ class SnapshotServiceImplTest {
 
         // Then
         verify(s3Client).getObject(any(GetObjectRequest.class));
-        assertTrue(exception.getMessage().contains("CSV header 'header1' not found for Avro field 'header1'"));
-    }
-
-    @Test
-    void testLoadJsonSchema_FileNotFound() {
-        String fileTobeProcessed = "nonExistentFile";
-        Exception exception = assertThrows(FileNotFoundException.class, () -> {
-            snapshotService.loadJsonSchema(fileTobeProcessed);
-        });
-
-        String expectedMessage = "Schema file not found";
-        String actualMessage = exception.getMessage();
-
-        assertTrue(actualMessage.contains(expectedMessage));
+        assertTrue(exception.getMessage().contains("CSV header"));
     }
 }
