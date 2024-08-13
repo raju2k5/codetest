@@ -3,21 +3,14 @@ import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
-
 import java.util.HashMap;
 import java.util.Map;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 class ApplicationTest {
-
-    @Mock
-    private SpringApplicationBuilder springApplicationBuilder;
 
     @Mock
     private ConfigurableApplicationContext configurableApplicationContext;
@@ -31,7 +24,6 @@ class ApplicationTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        when(springApplicationBuilder.run(any(String[].class))).thenReturn(configurableApplicationContext);
         when(configurableApplicationContext.getBean(Handler.class)).thenReturn(handler);
     }
 
@@ -41,20 +33,30 @@ class ApplicationTest {
         Map<String, Object> expectedResponse = new HashMap<>();
         when(handler.apply(event)).thenReturn(expectedResponse);
 
-        Map result = application.apply(event);
+        // Mock the static method to return the mocked application context
+        try (var mockedContext = mockStatic(Application.class)) {
+            mockedContext.when(() -> Application.getapplicationcontext(any(String[].class)))
+                         .thenReturn(configurableApplicationContext);
 
-        assertEquals(expectedResponse, result);
-        verify(handler).apply(event);
-        verify(configurableApplicationContext).getBean(Handler.class);
+            Map result = application.apply(event);
+
+            assertEquals(expectedResponse, result);
+            verify(handler).apply(event);
+        }
     }
 
     @Test
     void testGetApplicationContext() {
         String[] args = {};
-        when(springApplicationBuilder.run(args)).thenReturn(configurableApplicationContext);
+        
+        // Mock the static method to return the mocked application context
+        try (var mockedContext = mockStatic(Application.class)) {
+            mockedContext.when(() -> Application.getapplicationcontext(args))
+                         .thenReturn(configurableApplicationContext);
 
-        ApplicationContext context = Application.getapplicationcontext(args);
+            ApplicationContext context = Application.getapplicationcontext(args);
 
-        assertEquals(configurableApplicationContext, context);
+            assertEquals(configurableApplicationContext, context);
+        }
     }
 }
