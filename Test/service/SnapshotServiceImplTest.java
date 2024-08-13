@@ -1,11 +1,9 @@
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentMatchers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.boot.test.context.SpringBootTest;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
@@ -34,9 +32,6 @@ public class SnapshotServiceImplTest {
     @InjectMocks
     private SnapshotServiceImpl snapshotService;
 
-    @Spy
-    private Schema avroSchema = Schema.createRecord("TestRecord", "description", "namespace", false);
-
     @Test
     void testConvertCsvToParquetAndUpload() throws Exception {
         // Arrange
@@ -46,7 +41,9 @@ public class SnapshotServiceImplTest {
         String destinationBucketName = "my-destination-bucket";
         String destinationFileKey = "gbi-report/";
 
-        // Mocking the methods
+        // Mocking methods
+        when(s3Client.getObject(any(GetObjectRequest.class)))
+            .thenReturn(ResponseInputStream.create(null));  // Provide a mock response
         when(snapshotService.readCsvFromS3(eq(sourceBucketName), eq(sourceFileKey)))
             .thenReturn(List.of(new String[]{"header1", "header2"}, new String[]{"value1", "value2"}));
         when(snapshotService.loadJsonSchema(eq(fileTobeProcessed)))
@@ -57,8 +54,8 @@ public class SnapshotServiceImplTest {
 
         // Verify
         verify(s3Client).putObject(
-            ArgumentMatchers.any(PutObjectRequest.class),
-            ArgumentMatchers.any(RequestBody.class)
+            any(PutObjectRequest.class),
+            any(RequestBody.class)
         );
     }
 
@@ -71,9 +68,11 @@ public class SnapshotServiceImplTest {
         String destinationBucketName = "my-destination-bucket";
         String destinationFileKey = "gbi-report/";
 
-        // Mocking the methods
+        // Mocking methods
+        when(s3Client.getObject(any(GetObjectRequest.class)))
+            .thenReturn(ResponseInputStream.create(null));  // Provide a mock response
         when(snapshotService.readCsvFromS3(eq(sourceBucketName), eq(sourceFileKey)))
-            .thenReturn(List.of(new String[]{"header1", "header2"}, new String[]{"value1"}));
+            .thenReturn(List.of(new String[]{"header1", "header2"}, new String[]{"value1"}));  // Missing header
         when(snapshotService.loadJsonSchema(eq(fileTobeProcessed)))
             .thenReturn("{ \"type\": \"record\", \"name\": \"TestRecord\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}] }");
 
