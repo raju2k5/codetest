@@ -2,7 +2,6 @@ import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -16,10 +15,9 @@ import org.apache.parquet.hadoop.ParquetWriter;
 import org.apache.parquet.hadoop.metadata.CompressionCodecName;
 import org.junit.jupiter.api.extension.ExtendWith;
 
-import java.io.File;
-import java.io.IOException;
+import java.io.*;
 import java.util.List;
-import org.mockito.Mockito;
+
 import static org.mockito.Mockito.*;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -41,9 +39,11 @@ public class SnapshotServiceImplTest {
         String destinationBucketName = "my-destination-bucket";
         String destinationFileKey = "gbi-report/";
 
-        // Mocking methods
-        when(s3Client.getObject(any(GetObjectRequest.class)))
-            .thenReturn(ResponseInputStream.create(null));  // Provide a mock response
+        // Mocking ResponseInputStream
+        ResponseInputStream<GetObjectResponse> mockResponseInputStream = mock(ResponseInputStream.class);
+        when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(mockResponseInputStream);
+
+        // Mock methods
         when(snapshotService.readCsvFromS3(eq(sourceBucketName), eq(sourceFileKey)))
             .thenReturn(List.of(new String[]{"header1", "header2"}, new String[]{"value1", "value2"}));
         when(snapshotService.loadJsonSchema(eq(fileTobeProcessed)))
@@ -68,9 +68,11 @@ public class SnapshotServiceImplTest {
         String destinationBucketName = "my-destination-bucket";
         String destinationFileKey = "gbi-report/";
 
-        // Mocking methods
-        when(s3Client.getObject(any(GetObjectRequest.class)))
-            .thenReturn(ResponseInputStream.create(null));  // Provide a mock response
+        // Mocking ResponseInputStream
+        ResponseInputStream<GetObjectResponse> mockResponseInputStream = mock(ResponseInputStream.class);
+        when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(mockResponseInputStream);
+
+        // Mock methods
         when(snapshotService.readCsvFromS3(eq(sourceBucketName), eq(sourceFileKey)))
             .thenReturn(List.of(new String[]{"header1", "header2"}, new String[]{"value1"}));  // Missing header
         when(snapshotService.loadJsonSchema(eq(fileTobeProcessed)))
