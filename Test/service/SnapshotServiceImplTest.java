@@ -1,9 +1,8 @@
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.parquet.hadoop.ParquetWriter;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,7 +14,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import software.amazon.awssdk.services.s3.S3Client;
 
 import java.io.File;
-import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 
@@ -61,20 +59,21 @@ class SnapshotServiceImplTest {
     @Test
     void testRecordCountMatchBetweenCsvAndParquet() throws Exception {
         // Mock reading CSV data from S3
-        when(snapshotService.readCsvFromS3(anyString(), anyString())).thenReturn(csvData);
+        SnapshotServiceImpl snapshotServiceSpy = spy(snapshotService);
+        doReturn(csvData).when(snapshotServiceSpy).readCsvFromS3(anyString(), anyString());
 
         // Mock loading JSON schema
-        when(snapshotService.loadJsonSchema(anyString())).thenReturn(avroSchema.toString());
+        doReturn(avroSchema.toString()).when(snapshotServiceSpy).loadJsonSchema(anyString());
 
         // Mock Parquet file creation
         doNothing().when(parquetWriter).write(any(GenericRecord.class));
 
         // Mock the rest of the method to isolate the record count check
         File mockParquetFile = mock(File.class);
-        when(snapshotService.convertCsvToParquet(anyList(), any(Schema.class), anyString())).thenReturn(mockParquetFile);
+        doReturn(mockParquetFile).when(snapshotServiceSpy).convertCsvToParquet(anyList(), any(Schema.class), anyString());
 
         // Invoke the method under test
-        snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey);
+        snapshotServiceSpy.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey);
 
         // Verify that the Parquet writer was called the correct number of times
         int expectedRecordCount = csvData.size() - 1; // minus one for the header row
