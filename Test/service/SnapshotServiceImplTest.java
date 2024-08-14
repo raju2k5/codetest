@@ -50,7 +50,7 @@ class SnapshotServiceImplTest {
         );
 
         // Mock methods
-        when(snapshotService.readCsvFromS3(anyString(), anyString())).thenReturn(csvData);
+        when(snapshotService.readCsvFromS3(anyString(), anyString())).thenReturn(csvData); 
         when(snapshotService.loadJsonSchema(anyString())).thenReturn("{\"type\":\"record\",\"name\":\"Person\",\"fields\":[{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"age\",\"type\":\"int\"}]}");
         
         Path tempFilePath = Files.createTempFile("output_test", ".parquet");
@@ -98,7 +98,7 @@ class SnapshotServiceImplTest {
         );
 
         // Mock methods
-        when(snapshotService.readCsvFromS3(anyString(), anyString())).thenReturn(csvData);
+        when(snapshotService.readCsvFromS3(anyString(), anyString())).thenReturn(csvData); 
         when(snapshotService.loadJsonSchema(anyString())).thenReturn("{\"type\":\"record\",\"name\":\"Person\",\"fields\":[{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"age\",\"type\":\"int\"}]}");
         
         Path tempFilePath = Files.createTempFile("output_test", ".parquet");
