@@ -1,4 +1,3 @@
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -9,6 +8,7 @@ import org.apache.avro.Schema;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.util.Arrays;
 import java.util.List;
 
@@ -41,6 +41,8 @@ public class SnapshotServiceImplTest {
 
         String mockJsonSchema = "{\"type\":\"record\",\"name\":\"TestRecord\",\"fields\":[{\"name\":\"header1\",\"type\":\"string\"},{\"name\":\"header2\",\"type\":\"string\"}]}";
         Schema mockSchema = new Schema.Parser().parse(mockJsonSchema);
+
+        // Use a real temporary file
         File mockParquetFile = File.createTempFile("test", ".parquet");
 
         // Mocking the methods in SnapshotServiceImpl
