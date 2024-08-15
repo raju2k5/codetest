@@ -3,73 +3,147 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.Mockito;
-import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
-import software.amazon.awssdk.core.sync.RequestBody;
+import org.springframework.test.util.ReflectionTestUtils;
+import software.amazon.awssdk.core.ResponseInputStream;
+import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-import software.amazon.awssdk.core.ResponseInputStream;
+
 import com.opencsv.CSVReader;
+import com.opencsv.exceptions.CsvException;
+
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.parquet.hadoop.metadata.CompressionCodecName;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.parquet.avro.AvroParquetWriter;
 
 import java.io.*;
-import java.util.Arrays;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Arrays;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-class SnapshotServiceImplTest {
+public class SnapshotServiceImplTest {
 
     @Mock
     private S3Client s3Client;
 
     @InjectMocks
-    @Spy
-    private SnapshotServiceImpl snapshotServiceImpl;
+    private SnapshotServiceImpl snapshotService;
 
     @BeforeEach
-    void setUp() {
-        snapshotServiceImpl = Mockito.spy(new SnapshotServiceImpl(s3Client));
+    public void setUp() {
+        snapshotService = new SnapshotServiceImpl(s3Client);
     }
 
     @Test
-    void testConvertCsvToParquetAndUpload() throws IOException {
-        // Define input parameters
+    public void testConvertCsvToParquetAndUpload() throws IOException {
         String sourceBucketName = "source-bucket";
         String sourceFileKey = "source-file.csv";
-        String fileTobeProcessed = "fileType";
+        String fileTobeProcessed = "test-schema";
         String destinationBucketName = "destination-bucket";
-        String destinationFileKey = "destination-file.parquet";
+        String destinationFileKy = "destination-file.parquet";
 
-        // Mock S3 response for CSV data
+        // Mocking readCsvFromS3
+        List<String[]> csvData = new ArrayList<>();
+        csvData.add(new String[]{"header1", "header2"});
+        csvData.add(new String[]{"value1", "value2"});
+        doReturn(csvData).when(snapshotService).readCsvFromS3(anyString(), anyString());
+
+        // Mocking loadJsonSchema
+        String jsonSchema = "{\"type\": \"record\", \"name\": \"Test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}";
+        doReturn(jsonSchema).when(snapshotService).loadJsonSchema(anyString());
+
+        // Mocking S3 upload
+        doNothing().when(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
+
+        // Mocking deleteSysParquetFile
+        doNothing().when(snapshotService).deleteSysParquetFile(anyString());
+
+        snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKy);
+
+        verify(snapshotService).readCsvFromS3(sourceBucketName, sourceFileKey);
+        verify(snapshotService).loadJsonSchema(fileTobeProcessed);
+        verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
+    }
+
+    @Test
+    public void testReadCsvFromS3() throws IOException, CsvException {
+        String bucketName = "test-bucket";
+        String key = "test-file.csv";
+
+        // Mocking S3 response
         ResponseInputStream<GetObjectResponse> mockResponseInputStream = mock(ResponseInputStream.class);
         when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(mockResponseInputStream);
 
-        // Mock the reading of CSV data
-        Reader mockReader = new StringReader("header1,header2\nvalue1,value2");
-        when(mockResponseInputStream.readAllBytes()).thenReturn(mockReader.toString().getBytes());
-
-        // Mock CSVReader
-        List<String[]> mockCsvData = Arrays.asList(new String[]{"header1", "header2"}, new String[]{"value1", "value2"});
+        // Mocking CSVReader
+        Reader mockReader = mock(Reader.class);
         CSVReader mockCsvReader = mock(CSVReader.class);
+        List<String[]> mockCsvData = new ArrayList<>();
+        mockCsvData.add(new String[]{"header1", "header2"});
+        mockCsvData.add(new String[]{"value1", "value2"});
         when(mockCsvReader.readAll()).thenReturn(mockCsvData);
 
-        // Mock the loadJsonSchema method
-        String mockJsonSchema = "{\"type\":\"record\",\"name\":\"test\",\"fields\":[{\"name\":\"header1\",\"type\":\"string\"},{\"name\":\"header2\",\"type\":\"string\"}]}";
-        doReturn(mockJsonSchema).when(snapshotServiceImpl).loadJsonSchema(fileTobeProcessed);
+        // Inject mocks
+        ReflectionTestUtils.setField(snapshotService, "csvReader", mockCsvReader);
 
-        // Mock readCsvFromS3 method
-        doReturn(mockCsvData).when(snapshotServiceImpl).readCsvFromS3(sourceBucketName, sourceFileKey);
+        List<String[]> result = snapshotService.readCsvFromS3(bucketName, key);
 
-        // Call the method under test
-        snapshotServiceImpl.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey);
-
-        // Verify interactions with S3Client
+        assertNotNull(result);
+        assertEquals(2, result.size());
         verify(s3Client).getObject(any(GetObjectRequest.class));
+        verify(mockCsvReader).readAll();
+    }
+
+    @Test
+    public void testConvertCsvToParquet() throws IOException {
+        List<String[]> csvData = new ArrayList<>();
+        csvData.add(new String[]{"header1", "header2"});
+        csvData.add(new String[]{"value1", "value2"});
+
+        String jsonSchema = "{\"type\": \"record\", \"name\": \"Test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}";
+        Schema avroSchema = new Schema.Parser().parse(jsonSchema);
+
+        String fileName = "/tmp/test-output.parquet";
+        File parquetFile = snapshotService.convertCsvToParquet(csvData, avroSchema, fileName);
+
+        assertTrue(parquetFile.exists());
+        assertTrue(parquetFile.length() > 0);
+    }
+
+    @Test
+    public void testUploadParquetToS3() {
+        String destinationBucketName = "destination-bucket";
+        String destinationFileKey = "destination-file.parquet";
+        File parquetFile = new File("/tmp/test-output.parquet");
+
+        // Mocking S3 upload
+        doNothing().when(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
+
+        snapshotService.uploadParquetToS3(destinationBucketName, destinationFileKey, parquetFile, parquetFile.getName());
+
         verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
     }
-}
 
+    @Test
+    public void testDeleteSysParquetFile() {
+        String parquetFileName = "/tmp/test-output.parquet";
+        File mockFile = mock(File.class);
+
+        when(mockFile.exists()).thenReturn(true);
+        when(mockFile.delete()).thenReturn(true);
+
+        snapshotService.deleteSysParquetFile(parquetFileName);
+
+        verify(mockFile).delete();
+    }
+}
