@@ -8,11 +8,11 @@ import org.apache.avro.Schema;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.util.Arrays;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -42,27 +42,25 @@ public class SnapshotServiceImplTest {
         String mockJsonSchema = "{\"type\":\"record\",\"name\":\"TestRecord\",\"fields\":[{\"name\":\"header1\",\"type\":\"string\"},{\"name\":\"header2\",\"type\":\"string\"}]}";
         Schema mockSchema = new Schema.Parser().parse(mockJsonSchema);
 
-        // Use a real temporary file
+        // Create a temporary file for the Parquet file
         File mockParquetFile = File.createTempFile("test", ".parquet");
+        mockParquetFile.deleteOnExit(); // Ensure it gets deleted after the test
 
-        // Mocking the methods in SnapshotServiceImpl
-        when(snapshotService.readCsvFromS3(sourceBucketName, sourceFileKey)).thenReturn(mockCsvData);
-        when(snapshotService.loadJsonSchema(fileTobeProcessed)).thenReturn(mockJsonSchema);
-        when(snapshotService.convertCsvToParquet(mockCsvData, mockSchema, anyString())).thenReturn(mockParquetFile);
-        doNothing().when(snapshotService).uploadParquetToS3(destinationBucketName, destinationFileKey.replaceAll("\\.\\w+", "") + ".parquet", mockParquetFile, anyString());
+        // Mock the methods in SnapshotServiceImpl
+        when(snapshotService.readCsvFromS3(eq(sourceBucketName), eq(sourceFileKey))).thenReturn(mockCsvData);
+        when(snapshotService.loadJsonSchema(eq(fileTobeProcessed))).thenReturn(mockJsonSchema);
+        when(snapshotService.convertCsvToParquet(eq(mockCsvData), eq(mockSchema), anyString())).thenReturn(mockParquetFile);
+        doNothing().when(snapshotService).uploadParquetToS3(eq(destinationBucketName), eq(destinationFileKey.replaceAll("\\.\\w+", "") + ".parquet"), eq(mockParquetFile), anyString());
         doNothing().when(snapshotService).deleteSysParquetFile(anyString());
 
         // Act
         snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey);
 
         // Assert
-        verify(snapshotService).readCsvFromS3(sourceBucketName, sourceFileKey);
-        verify(snapshotService).loadJsonSchema(fileTobeProcessed);
-        verify(snapshotService).convertCsvToParquet(mockCsvData, mockSchema, anyString());
-        verify(snapshotService).uploadParquetToS3(destinationBucketName, destinationFileKey.replaceAll("\\.\\w+", "") + ".parquet", mockParquetFile, anyString());
+        verify(snapshotService).readCsvFromS3(eq(sourceBucketName), eq(sourceFileKey));
+        verify(snapshotService).loadJsonSchema(eq(fileTobeProcessed));
+        verify(snapshotService).convertCsvToParquet(eq(mockCsvData), eq(mockSchema), anyString());
+        verify(snapshotService).uploadParquetToS3(eq(destinationBucketName), eq(destinationFileKey.replaceAll("\\.\\w+", "") + ".parquet"), eq(mockParquetFile), anyString());
         verify(snapshotService).deleteSysParquetFile(anyString());
-
-        // Clean up the temporary file
-        mockParquetFile.delete();
     }
 }
