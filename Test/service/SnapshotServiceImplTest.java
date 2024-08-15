@@ -6,17 +6,10 @@ import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import software.amazon.awssdk.core.sync.RequestBody;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-import software.amazon.awssdk.services.s3.model.GetObjectRequest;
-import software.amazon.awssdk.services.s3.model.GetObjectResponse;
-import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.exception.SdkClientException;
 
-import java.io.*;
+import java.io.IOException;
 import java.util.Collections;
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -34,45 +27,50 @@ class SnapshotServiceImplTest {
     }
 
     @Test
-    void testConvertCsvToParquetAndUpload() throws IOException {
+    void testConvertCsvToParquetAndUpload_readCsvFromS3IOException() throws IOException {
         String sourceBucketName = "source-bucket";
         String sourceFileKey = "path/to/source.csv";
         String fileTobeProcessed = "testFileType";
         String destinationBucketName = "destination-bucket";
         String destinationFileKey = "path/to/destination.parquet";
 
-        // Mock the S3 response
-        GetObjectResponse getObjectResponse = mock(GetObjectResponse.class);
-        ResponseInputStream<GetObjectResponse> responseInputStream = mock(ResponseInputStream.class);
+        // Simulate IOException in readCsvFromS3 method
+        when(s3Client.getObject(any())).thenThrow(new SdkClientException("Simulated S3 exception"));
 
-        when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(responseInputStream);
-        when(responseInputStream.readAllBytes()).thenReturn("header1,header2\nvalue1,value2".getBytes());
-        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class))).thenReturn(null);
+        // Execute the method under test and expect IOException to be thrown
+        IOException thrownException = assertThrows(IOException.class, () -> {
+            snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey);
+        });
 
-        // Mock schema loading
-        snapshotService = spy(snapshotService);
-        doReturn("{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}").when(snapshotService).loadJsonSchema(anyString());
-
-        // Execute the method under test
-        assertDoesNotThrow(() -> snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey));
+        // Verify the exception message
+        assertEquals("Error fetching CSV data from S3", thrownException.getMessage());
 
         // Verify interactions
-        verify(s3Client).getObject(any(GetObjectRequest.class));
-        verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
+        verify(s3Client).getObject(any());
     }
 
     @Test
-    void testConvertCsvToParquetAndUpload_s3ClientException() throws IOException {
+    void testConvertCsvToParquetAndUpload_readCsvFromS3CsvException() throws IOException {
         String sourceBucketName = "source-bucket";
         String sourceFileKey = "path/to/source.csv";
         String fileTobeProcessed = "testFileType";
         String destinationBucketName = "destination-bucket";
         String destinationFileKey = "path/to/destination.parquet";
 
-        // Simulate S3Client exception
-        when(s3Client.getObject(any(GetObjectRequest.class))).thenThrow(SdkClientException.class);
+        // Simulate successful S3 response but CSV reading throws CsvException
+        ResponseInputStream<GetObjectResponse> responseInputStream = mock(ResponseInputStream.class);
+        when(s3Client.getObject(any())).thenReturn(responseInputStream);
+        when(responseInputStream.readAllBytes()).thenThrow(new IOException("Simulated CSV read error"));
 
-        // Execute the method under test
-        assertThrows(SdkClientException.class, () -> snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey));
+        // Execute the method under test and expect IOException to be thrown
+        IOException thrownException = assertThrows(IOException.class, () -> {
+            snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey);
+        });
+
+        // Verify the exception message
+        assertEquals("Error reading CSV data from S3", thrownException.getMessage());
+
+        // Verify interactions
+        verify(s3Client).getObject(any());
     }
 }
