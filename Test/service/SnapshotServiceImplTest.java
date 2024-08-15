@@ -1,4 +1,4 @@
-  @Test
+@Test
     void testRecordCount() throws IOException {
         String sourceBucketName = "source-bucket";
         String sourceFileKey = "path/to/source.csv";
