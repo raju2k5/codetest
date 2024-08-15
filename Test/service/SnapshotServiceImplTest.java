@@ -17,11 +17,13 @@ void testRecordCount() throws IOException {
 
     // Spy on the convertCsvToParquet method to verify record count indirectly
     SnapshotServiceImpl spyService = spy(snapshotService);
+
+    // We need to do nothing on convertCsvToParquet so that it doesn't attempt to create a Parquet file
     doNothing().when(spyService).convertCsvToParquet(anyList(), any(Schema.class), anyString());
 
     // Execute the method under test
     spyService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey);
 
-    // Verify the interaction with the convertCsvToParquet method
+    // Verify that convertCsvToParquet is called with a list containing 3 records (including header)
     verify(spyService).convertCsvToParquet(argThat(records -> records.size() == 3), any(Schema.class), anyString());
 }
