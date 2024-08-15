@@ -15,7 +15,7 @@ import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.exception.SdkClientException;
 
 import java.io.*;
-import java.util.Collections;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -74,5 +74,53 @@ class SnapshotServiceImplTest {
         // Execute the method under test and expect IOException with specific message
         IOException thrownException = assertThrows(IOException.class, () -> snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey));
         assertEquals("Error fetching CSV data from S3", thrownException.getMessage());
+    }
+
+    @Test
+    void testRecordCount() throws IOException {
+        String sourceBucketName = "source-bucket";
+        String sourceFileKey = "path/to/source.csv";
+        String fileTobeProcessed = "testFileType";
+        String destinationBucketName = "destination-bucket";
+        String destinationFileKey = "path/to/destination.parquet";
+
+        // Mock the CSV data
+        ResponseInputStream<GetObjectResponse> responseInputStream = mock(ResponseInputStream.class);
+        List<String[]> csvData = Arrays.asList(
+                new String[]{"header1", "header2"},
+                new String[]{"value1", "value2"},
+                new String[]{"value3", "value4"}
+        );
+
+        when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(responseInputStream);
+        when(responseInputStream.readAllBytes()).thenReturn(
+            csvData.stream()
+                   .map(row -> String.join(",", row))
+                   .reduce((a, b) -> a + "\n" + b)
+                   .orElse("")
+                   .getBytes()
+        );
+
+        // Mock schema loading
+        snapshotService = spy(snapshotService);
+        doReturn("{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}").when(snapshotService).loadJsonSchema(anyString());
+
+        // Mock Parquet file creation
+        File parquetFile = mock(File.class);
+        when(parquetFile.length()).thenReturn(0L); // Mock file length
+
+        snapshotService = spy(snapshotService);
+        doReturn(parquetFile).when(snapshotService).convertCsvToParquet(eq(csvData), any(), anyString());
+
+        // Execute the method under test
+        snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey);
+
+        // Verify record count
+        verify(snapshotService).convertCsvToParquet(
+            eq(csvData),
+            any(),
+            anyString()
+        );
+        verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
     }
 }
