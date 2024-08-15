@@ -47,11 +47,11 @@ public class SnapshotServiceImpl implements SnapshotService {
      * @throws SdkClientException     if an error occurs with the AWS SDK client
      */
     @Override
-    public void convertCsvToParquetAndUpload(String sourceBucketName, String sourceFileKey, String fileTobeProcessed, String destinationBucketName, String destinationFileKey) throws IOException {
+    public void convertCsvToParquetAndUpload(String sourceBucketName, String sourceFileKey, String fileTobeProcessed, String destinationBucketName, String destinationFileKy) throws IOException {
         String tempFileName = "/tmp/output_" + System.currentTimeMillis() + ".parquet";
 
         log.info("Starting the conversion of CSV to Parquet and upload process. Source: {}/{} -> Destination: {}/{}", 
-                 sourceBucketName, sourceFileKey, destinationBucketName, destinationFileKey);
+                 sourceBucketName, sourceFileKey, destinationBucketName, destinationFileKy);
 
         try {
             // Read CSV data from S3
@@ -69,8 +69,8 @@ public class SnapshotServiceImpl implements SnapshotService {
 
             // Upload Parquet file to S3
             log.debug("Uploading Parquet file to S3 bucket: {}, key: {}", destinationBucketName, destinationFileKey);
-            String destinationFileKeyFinal = destinationFileKey.replaceAll("\\.\\w+", "") + ".parquet";
-            uploadParquetToS3(destinationBucketName, destinationFileKeyFinal, parquetFile, tempFileName);
+            String destinationFileKey = destinationFileKy.replaceAll("\\.\\w+", "") + ".parquet";
+            uploadParquetToS3(destinationBucketName, destinationFileKey, parquetFile, tempFileName);
 
             log.info("CSV to Parquet conversion and upload completed successfully.");
         } catch (SdkClientException e) {
