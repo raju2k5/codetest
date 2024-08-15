@@ -1,4 +1,4 @@
- @Test
+@Test
     void testConvertCsvToParquetAndUpload() throws IOException {
         String sourceBucketName = "source-bucket";
         String sourceFileKey = "path/to/source.csv";
@@ -12,9 +12,10 @@
         when(responseInputStream.readAllBytes()).thenReturn("header1,header2\nvalue1,value2".getBytes());
         when(s3Client.putObject(any(), any(RequestBody.class))).thenReturn(null);
 
-        // Use a hardcoded schema for testing
-        String hardcodedSchema = "{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}";
-        snapshotService.setSchemaForTesting(hardcodedSchema); // New method to set schema
+        // Mock the schema loading to return a hardcoded schema
+        when(snapshotService.loadJsonSchema(anyString())).thenReturn(
+            "{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}"
+        );
 
         // Create a temporary file to store Parquet data
         java.nio.file.Path tempFilePath = Files.createTempFile("test-output", ".parquet");
