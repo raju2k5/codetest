@@ -15,15 +15,16 @@ void testRecordCount() throws IOException {
     // Mock schema loading
     when(snapshotService.loadJsonSchema(anyString())).thenReturn("{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}");
 
-    // Spy on the convertCsvToParquet method to verify record count indirectly
-    SnapshotServiceImpl spyService = spy(snapshotService);
-
-    // We need to do nothing on convertCsvToParquet so that it doesn't attempt to create a Parquet file
-    doNothing().when(spyService).convertCsvToParquet(anyList(), any(Schema.class), anyString());
+    // Mock the convertCsvToParquet method to avoid file creation
+    doAnswer(invocation -> {
+        List<String[]> records = invocation.getArgument(0);
+        assertEquals(3, records.size()); // Ensure that there are 3 records (including header)
+        return null;
+    }).when(snapshotService).convertCsvToParquet(anyList(), any(Schema.class), anyString());
 
     // Execute the method under test
-    spyService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey);
+    snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey);
 
-    // Verify that convertCsvToParquet is called with a list containing 3 records (including header)
-    verify(spyService).convertCsvToParquet(argThat(records -> records.size() == 3), any(Schema.class), anyString());
+    // Verify that convertCsvToParquet was called with the correct number of records
+    verify(snapshotService).convertCsvToParquet(anyList(), any(Schema.class), anyString());
 }
