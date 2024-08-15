@@ -49,7 +49,6 @@ class SnapshotServiceImplTest {
         when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class))).thenReturn(null);
 
         // Mock schema loading
-        snapshotService = spy(snapshotService);
         doReturn("{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}").when(snapshotService).loadJsonSchema(anyString());
 
         // Execute the method under test
@@ -102,25 +101,27 @@ class SnapshotServiceImplTest {
         );
 
         // Mock schema loading
-        snapshotService = spy(snapshotService);
         doReturn("{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}").when(snapshotService).loadJsonSchema(anyString());
 
-        // Mock Parquet file creation
+        // Mock file creation
         File parquetFile = mock(File.class);
         when(parquetFile.length()).thenReturn(0L); // Mock file length
 
-        snapshotService = spy(snapshotService);
-        doReturn(parquetFile).when(snapshotService).convertCsvToParquet(eq(csvData), any(), anyString());
+        // Mock conversion method to just return the mocked file
+        doReturn(parquetFile).when(snapshotService).convertCsvToParquet(anyList(), any(), anyString());
 
         // Execute the method under test
         snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey);
 
-        // Verify record count
+        // Verify interactions
+        verify(s3Client).getObject(any(GetObjectRequest.class));
+        verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
+
+        // Verify that the convertCsvToParquet method was called
         verify(snapshotService).convertCsvToParquet(
             eq(csvData),
             any(),
             anyString()
         );
-        verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
     }
 }
