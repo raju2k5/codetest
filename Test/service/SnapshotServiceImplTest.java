@@ -3,6 +3,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -10,6 +11,7 @@ import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.core.ResponseInputStream;
+import com.opencsv.CSVReader;
 
 import java.io.*;
 import java.util.Arrays;
@@ -24,6 +26,7 @@ class SnapshotServiceImplTest {
     @Mock
     private S3Client s3Client;
 
+    @Spy
     @InjectMocks
     private SnapshotServiceImpl snapshotServiceImpl;
 
@@ -45,22 +48,24 @@ class SnapshotServiceImplTest {
         ResponseInputStream<GetObjectResponse> mockResponseInputStream = mock(ResponseInputStream.class);
         when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(mockResponseInputStream);
 
+        // Mock the reading of CSV data
         Reader mockReader = new StringReader("header1,header2\nvalue1,value2");
         when(mockResponseInputStream.readAllBytes()).thenReturn(mockReader.toString().getBytes());
 
-        // Mock JSON schema loading
-        String mockJsonSchema = "{\"type\":\"record\",\"name\":\"test\",\"fields\":[{\"name\":\"header1\",\"type\":\"string\"},{\"name\":\"header2\",\"type\":\"string\"}]}";
-        SnapshotServiceImpl spySnapshotService = spy(snapshotServiceImpl);
-        doReturn(mockJsonSchema).when(spySnapshotService).loadJsonSchema(fileTobeProcessed);
-
-        // Mocking CSVReader
+        // Mock CSVReader
         List<String[]> mockCsvData = Arrays.asList(new String[]{"header1", "header2"}, new String[]{"value1", "value2"});
         CSVReader mockCsvReader = mock(CSVReader.class);
-        when(mockCsvReader.readAll()).thenReturn(mockCsvData);
-        spySnapshotService.readCsvFromS3 = () -> mockCsvData;
+        doReturn(mockCsvData).when(mockCsvReader).readAll();
+
+        // Mock the loadJsonSchema method
+        String mockJsonSchema = "{\"type\":\"record\",\"name\":\"test\",\"fields\":[{\"name\":\"header1\",\"type\":\"string\"},{\"name\":\"header2\",\"type\":\"string\"}]}";
+        doReturn(mockJsonSchema).when(snapshotServiceImpl).loadJsonSchema(fileTobeProcessed);
+
+        // Mock readCsvFromS3 method
+        doReturn(mockCsvData).when(snapshotServiceImpl).readCsvFromS3(sourceBucketName, sourceFileKey);
 
         // Call the method under test
-        spySnapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey);
+        snapshotServiceImpl.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey);
 
         // Verify interactions with S3Client
         verify(s3Client).getObject(any(GetObjectRequest.class));
