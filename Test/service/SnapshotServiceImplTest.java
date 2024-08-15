@@ -17,7 +17,6 @@ import java.io.*;
 import java.util.Arrays;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -55,7 +54,7 @@ class SnapshotServiceImplTest {
         // Mock CSVReader
         List<String[]> mockCsvData = Arrays.asList(new String[]{"header1", "header2"}, new String[]{"value1", "value2"});
         CSVReader mockCsvReader = mock(CSVReader.class);
-        doReturn(mockCsvData).when(mockCsvReader).readAll();
+        when(mockCsvReader.readAll()).thenReturn(mockCsvData);
 
         // Mock the loadJsonSchema method
         String mockJsonSchema = "{\"type\":\"record\",\"name\":\"test\",\"fields\":[{\"name\":\"header1\",\"type\":\"string\"},{\"name\":\"header2\",\"type\":\"string\"}]}";
