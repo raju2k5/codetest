@@ -42,7 +42,7 @@ public class SnapshotServiceImpl implements SnapshotService {
      * @param sourceFileKey           the key (path) of the source CSV file in the S3 bucket
      * @param fileTobeProcessed       the type of file to be processed, used to determine the schema
      * @param destinationBucketName   the name of the S3 bucket where the Parquet file will be uploaded
-     * @param destinationFileKey      the key (path) of the Parquet file in the destination S3 bucket
+     * @param destinationFileKy      the key (path) of the Parquet file in the destination S3 bucket
      * @throws IOException            if an I/O error occurs during processing
      * @throws SdkClientException     if an error occurs with the AWS SDK client
      */
@@ -57,6 +57,9 @@ public class SnapshotServiceImpl implements SnapshotService {
             // Read CSV data from S3
             log.debug("Reading CSV data from S3 bucket: {}, key: {}", sourceBucketName, sourceFileKey);
             List<String[]> csvData = readCsvFromS3(sourceBucketName, sourceFileKey);
+
+            int totalCsvRecords = csvData.size() - 1; // Subtracting 1 for header row
+            log.info("Total records in CSV data (excluding header): {}", totalCsvRecords);
 
             // Load the JSON schema based on fileTobeProcessed
             log.debug("Loading JSON schema for file type: {}", fileTobeProcessed);
@@ -157,6 +160,8 @@ public class SnapshotServiceImpl implements SnapshotService {
 
         log.debug("Starting Parquet file writing. Output file: {}", fileName);
         
+        int totalParquetRecords = 0;
+
         try (ParquetWriter<GenericRecord> writer = AvroParquetWriter.<GenericRecord>builder(new org.apache.hadoop.fs.Path(parquetFile.getAbsolutePath()))
                 .withSchema(avroSchema)
                 .withConf(hadoopConfig)
@@ -190,9 +195,18 @@ public class SnapshotServiceImpl implements SnapshotService {
                 }
 
                 writer.write(avroRecord);
+                totalParquetRecords++;
             }
 
             log.info("Parquet file written successfully. File: {}", fileName);
+            log.info("Total records written to Parquet file: {}", totalParquetRecords);
+
+            // Compare the total records in CSV and Parquet data
+            if (totalParquetRecords == (csvData.size() - 1)) {
+                log.info("Record count matches between CSV and Parquet files.");
+            } else {
+                log.warn("Record count mismatch: CSV records = {}, Parquet records = {}", csvData.size() - 1, totalParquetRecords);
+            }
 
         } catch (IOException e) {
             log.error("Error writing Parquet file: {}", e.getMessage(), e);
