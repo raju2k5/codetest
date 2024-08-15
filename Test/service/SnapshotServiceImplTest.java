@@ -72,3 +72,4 @@ class SnapshotServiceImplTest {
         verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
     }
 }
+
