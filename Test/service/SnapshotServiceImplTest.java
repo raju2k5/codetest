@@ -12,10 +12,10 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.core.ResponseInputStream;
 
 import java.io.*;
-import java.util.List;
 import java.util.Arrays;
+import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -46,15 +46,21 @@ class SnapshotServiceImplTest {
         when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(mockResponseInputStream);
 
         Reader mockReader = new StringReader("header1,header2\nvalue1,value2");
-        CSVReader mockCsvReader = new CSVReader(mockReader);
-        whenNew(CSVReader.class).withAnyArguments().thenReturn(mockCsvReader);
+        when(mockResponseInputStream.readAllBytes()).thenReturn(mockReader.toString().getBytes());
 
         // Mock JSON schema loading
         String mockJsonSchema = "{\"type\":\"record\",\"name\":\"test\",\"fields\":[{\"name\":\"header1\",\"type\":\"string\"},{\"name\":\"header2\",\"type\":\"string\"}]}";
-        when(snapshotServiceImpl.loadJsonSchema(fileTobeProcessed)).thenReturn(mockJsonSchema);
+        SnapshotServiceImpl spySnapshotService = spy(snapshotServiceImpl);
+        doReturn(mockJsonSchema).when(spySnapshotService).loadJsonSchema(fileTobeProcessed);
+
+        // Mocking CSVReader
+        List<String[]> mockCsvData = Arrays.asList(new String[]{"header1", "header2"}, new String[]{"value1", "value2"});
+        CSVReader mockCsvReader = mock(CSVReader.class);
+        when(mockCsvReader.readAll()).thenReturn(mockCsvData);
+        spySnapshotService.readCsvFromS3 = () -> mockCsvData;
 
         // Call the method under test
-        snapshotServiceImpl.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey);
+        spySnapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey);
 
         // Verify interactions with S3Client
         verify(s3Client).getObject(any(GetObjectRequest.class));
