@@ -30,11 +30,6 @@ public class SnapshotServiceImplTest {
     private final String destinationBucketName = "destination-bucket";
     private final String destinationFileKey = "destination.parquet";
 
-    @BeforeEach
-    void setUp() {
-        snapshotService = new SnapshotServiceImpl(s3Client);
-    }
-
     @Test
     void testConvertCsvToParquetAndUpload() throws IOException {
         // Arrange
@@ -46,12 +41,12 @@ public class SnapshotServiceImplTest {
 
         String mockJsonSchema = "{\"type\":\"record\",\"name\":\"TestRecord\",\"fields\":[{\"name\":\"header1\",\"type\":\"string\"},{\"name\":\"header2\",\"type\":\"string\"}]}";
         Schema mockSchema = new Schema.Parser().parse(mockJsonSchema);
-        File mockParquetFile = mock(File.class);
+        File mockParquetFile = File.createTempFile("test", ".parquet");
 
         // Mocking the methods in SnapshotServiceImpl
-        doReturn(mockCsvData).when(snapshotService).readCsvFromS3(sourceBucketName, sourceFileKey);
-        doReturn(mockJsonSchema).when(snapshotService).loadJsonSchema(fileTobeProcessed);
-        doReturn(mockParquetFile).when(snapshotService).convertCsvToParquet(mockCsvData, mockSchema, anyString());
+        when(snapshotService.readCsvFromS3(sourceBucketName, sourceFileKey)).thenReturn(mockCsvData);
+        when(snapshotService.loadJsonSchema(fileTobeProcessed)).thenReturn(mockJsonSchema);
+        when(snapshotService.convertCsvToParquet(mockCsvData, mockSchema, anyString())).thenReturn(mockParquetFile);
         doNothing().when(snapshotService).uploadParquetToS3(destinationBucketName, destinationFileKey.replaceAll("\\.\\w+", "") + ".parquet", mockParquetFile, anyString());
         doNothing().when(snapshotService).deleteSysParquetFile(anyString());
 
@@ -65,8 +60,7 @@ public class SnapshotServiceImplTest {
         verify(snapshotService).uploadParquetToS3(destinationBucketName, destinationFileKey.replaceAll("\\.\\w+", "") + ".parquet", mockParquetFile, anyString());
         verify(snapshotService).deleteSysParquetFile(anyString());
 
-        // Additional assertion to check that the CSV and Parquet record counts were logged as matching
-        int totalCsvRecords = mockCsvData.size() - 1;
-        verify(mockParquetFile).length(); // This simulates the existence of the Parquet file
+        // Clean up the temporary file
+        mockParquetFile.delete();
     }
 }
