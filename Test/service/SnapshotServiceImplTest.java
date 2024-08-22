@@ -3,7 +3,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.mockito.InjectMocks;
 import org.mockito.MockitoAnnotations;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.junit.jupiter.api.extension.ExtendWith;
 import software.amazon.awssdk.services.s3.S3Client;
 import org.apache.avro.Schema;
 
@@ -21,12 +25,15 @@ import software.amazon.awssdk.core.exception.SdkClientException;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@ExtendWith(MockitoExtension.class)
+@ExtendWith(OutputCaptureExtension.class)
 class SnapshotServiceImplTest {
 
     @Mock
     private S3Client s3Client;
 
     @InjectMocks
+    @Spy
     private SnapshotServiceImpl snapshotService;
 
     @BeforeEach
@@ -35,7 +42,7 @@ class SnapshotServiceImplTest {
     }
 
     @Test
-    void testConvertCsvToParquetAndUpload() throws IOException {
+    void testConvertCsvToParquetAndUpload(CapturedOutput output) throws IOException {
         
         String sourceBucketName = "source-bucket";
         String sourceFileKey = "path/to/source.csv";
@@ -47,16 +54,18 @@ class SnapshotServiceImplTest {
 
         // Simulate S3Client getting CSV data
         when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(responseInputStream);
-        when(responseInputStream.readAllBytes()).thenReturn("header1, header2\nvalue1, value2".getBytes());
+        when(responseInputStream.readAllBytes()).thenReturn("header1,header2\nvalue1,value2".getBytes());
         when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class))).thenReturn(null);
 
         // Mock Schema loading
-        snapshotService = spy(snapshotService);
         doReturn("{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}").when(snapshotService).loadJsonSchema(anyString());
 
-        // Mocking CSV and Parquet record count methods
-        doReturn(2).when(snapshotService).getCsvRecordCount(anyString());
-        doReturn(2).when(snapshotService).getParquetRecordCount(any(File.class));
+        // Mock CSV reading and Parquet conversion methods
+        doReturn(List.of(new String[]{"header1", "header2"}, new String[]{"value1", "value2"}))
+            .when(snapshotService).readCsvFromS3(anyString(), anyString());
+
+        File mockParquetFile = new File("/tmp/mock.parquet");
+        doReturn(mockParquetFile).when(snapshotService).convertCsvToParquet(anyList(), any(Schema.class), anyString());
 
         assertDoesNotThrow(() -> snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey));
 
@@ -65,9 +74,8 @@ class SnapshotServiceImplTest {
         verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
 
         // Verify that the CSV and Parquet record counts match
-        verify(snapshotService).getCsvRecordCount(anyString());
-        verify(snapshotService).getParquetRecordCount(any(File.class));
-        verify(snapshotService).logRecordCountMatch(2, 2);  // Assuming there's a method to log the record count match
+        String expectedLogMessage = "Record count matches between CSV and Parquet files.";
+        assertTrue(output.getOut().contains(expectedLogMessage), "Expected log message not found: " + expectedLogMessage);
     }
 
     @Test
