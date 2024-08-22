@@ -1,75 +1,42 @@
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.BeforeEach;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
-import org.mockito.Spy;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.core.ResponseInputStream;
-import software.amazon.awssdk.services.s3.model.GetObjectResponse;
-import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-import software.amazon.awssdk.core.sync.RequestBody;
-import software.amazon.awssdk.core.exception.SdkClientException;
+@Test
+void testConvertCsvToParquetAndUpload_RecordCount() throws IOException {
+    String sourceBucketName = "source-bucket";
+    String sourceFileKey = "path/to/source.csv";
+    String fileTobeProcessed = "gbi_party";
+    String destinationBucketName = "destination-bucket";
+    String destinationFileKey = "path/to/destination.parquet";
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.util.Arrays;
-import java.util.List;
-import java.util.stream.Collectors;
+    // Mock CSV data with a header and two rows
+    String csvContent = "header1,header2\nvalue1,value2\nvalue3,value4";
+    List<String[]> mockCsvData = Arrays.asList(
+        new String[]{"header1", "header2"},
+        new String[]{"value1", "value2"},
+        new String[]{"value3", "value4"}
+    );
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+    // Mock the S3 client behavior
+    ResponseInputStream<GetObjectResponse> mockResponseInputStream = mock(ResponseInputStream.class);
+    when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(mockResponseInputStream);
+    when(mockResponseInputStream.readAllBytes()).thenReturn(csvContent.getBytes());
 
-import static org.junit.jupiter.api.Assertions.*;
+    // Mock the schema loading
+    snapshotService = spy(snapshotService);
+    doReturn("{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}").when(snapshotService).loadJsonSchema(anyString());
 
-class SnapshotServiceImplTest {
+    // Use a ByteArrayOutputStream to simulate writing to a file without creating an actual file
+    ByteArrayOutputStream parquetOutputStream = new ByteArrayOutputStream();
 
-    @Mock
-    private S3Client s3Client;
+    doAnswer(invocation -> {
+        // Simulate writing the Parquet data
+        ParquetWriter<GenericRecord> writer = (ParquetWriter<GenericRecord>) invocation.callRealMethod();
+        writer.write(new GenericData.Record(new Schema.Parser().parse("{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}")));
+        return null;
+    }).when(snapshotService).convertCsvToParquet(eq(mockCsvData), any(Schema.class), anyString());
 
-    @Spy
-    @InjectMocks
-    private SnapshotServiceImpl snapshotService;
+    assertDoesNotThrow(() -> snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey));
 
-    @BeforeEach
-    void setUp() {
-        MockitoAnnotations.openMocks(this);
-    }
-
-    @Test
-    void testConvertCsvToParquetAndUpload_RecordCountMatches() throws IOException {
-        String sourceBucketName = "source-bucket";
-        String sourceFileKey = "path/to/source.csv";
-        String fileTobeProcessed = "gbi_party";
-        String destinationBucketName = "destination-bucket";
-        String destinationFileKey = "path/to/destination.parquet";
-
-        // Mock S3Client response
-        ResponseInputStream<GetObjectResponse> responseInputStream = mock(ResponseInputStream.class);
-        when(s3Client.getObject(any())).thenReturn(responseInputStream);
-        
-        // Simulate CSV data with correct line separation
-        String csvData = "header1,header2\nvalue1,value2\nvalue3,value4";
-        InputStream csvStream = new java.io.ByteArrayInputStream(csvData.getBytes());
-        BufferedReader csvReader = new BufferedReader(new InputStreamReader(csvStream));
-        when(responseInputStream.readAllBytes()).thenReturn(csvData.getBytes());
-
-        // Mock Parquet conversion
-        doReturn("{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}").when(snapshotService).loadJsonSchema(anyString());
-        
-        // Mock the ParquetWriter process without creating an actual file
-        doNothing().when(snapshotService).uploadParquetToS3(eq(destinationBucketName), eq(destinationFileKey), any(), any());
-
-        // Execute the method
-        assertDoesNotThrow(() -> snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey));
-
-        // Verify S3 interactions
-        verify(s3Client).getObject(any());
-        verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
-
-        // Validate that record counts match (in logs)
-        verify(snapshotService).convertCsvToParquet(any(), any(), anyString());
-    }
+    // Verify the record counts and Parquet file creation
+    verify(snapshotService).convertCsvToParquet(eq(mockCsvData), any(Schema.class), anyString());
+    verify(s3Client).getObject(any(GetObjectRequest.class));
+    verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
 }
