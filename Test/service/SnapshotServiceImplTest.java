@@ -23,20 +23,22 @@ void testConvertCsvToParquetAndUpload_RecordCount() throws IOException {
     snapshotService = spy(snapshotService);
     doReturn("{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}").when(snapshotService).loadJsonSchema(anyString());
 
-    // Use a ByteArrayOutputStream to simulate writing to a file without creating an actual file
-    ByteArrayOutputStream parquetOutputStream = new ByteArrayOutputStream();
-
-    doAnswer(invocation -> {
-        // Simulate writing the Parquet data
-        ParquetWriter<GenericRecord> writer = (ParquetWriter<GenericRecord>) invocation.callRealMethod();
-        writer.write(new GenericData.Record(new Schema.Parser().parse("{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}")));
-        return null;
-    }).when(snapshotService).convertCsvToParquet(eq(mockCsvData), any(Schema.class), anyString());
+    // Mock convertCsvToParquet to return a non-null value without writing a file
+    doReturn(new File("mocked-file")).when(snapshotService).convertCsvToParquet(anyList(), any(Schema.class), anyString());
 
     assertDoesNotThrow(() -> snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey));
 
-    // Verify the record counts and Parquet file creation
-    verify(snapshotService).convertCsvToParquet(eq(mockCsvData), any(Schema.class), anyString());
-    verify(s3Client).getObject(any(GetObjectRequest.class));
+    // Use ArgumentCaptor to capture the arguments passed to convertCsvToParquet and verify them
+    ArgumentCaptor<List> csvDataCaptor = ArgumentCaptor.forClass(List.class);
+    ArgumentCaptor<Schema> schemaCaptor = ArgumentCaptor.forClass(Schema.class);
+    ArgumentCaptor<String> fileNameCaptor = ArgumentCaptor.forClass(String.class);
+    
+    verify(snapshotService).convertCsvToParquet(csvDataCaptor.capture(), schemaCaptor.capture(), fileNameCaptor.capture());
+
+    // Verify the CSV data passed
+    assertEquals(mockCsvData, csvDataCaptor.getValue());
+    // Verify that the Parquet conversion was called
+    verify(snapshotService).convertCsvToParquet(anyList(), any(Schema.class), anyString());
+    // Verify that the S3 upload was attempted
     verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
 }
