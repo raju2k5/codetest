@@ -11,9 +11,13 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.core.exception.SdkClientException;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
@@ -45,7 +49,12 @@ class SnapshotServiceImplTest {
         // Mock S3Client response
         ResponseInputStream<GetObjectResponse> responseInputStream = mock(ResponseInputStream.class);
         when(s3Client.getObject(any())).thenReturn(responseInputStream);
-        when(responseInputStream.readAllBytes()).thenReturn("header1, header2\nvalue1, value2".getBytes());
+        
+        // Simulate CSV data with correct line separation
+        String csvData = "header1,header2\nvalue1,value2\nvalue3,value4";
+        InputStream csvStream = new java.io.ByteArrayInputStream(csvData.getBytes());
+        BufferedReader csvReader = new BufferedReader(new InputStreamReader(csvStream));
+        when(responseInputStream.readAllBytes()).thenReturn(csvData.getBytes());
 
         // Mock Parquet conversion
         doReturn("{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}").when(snapshotService).loadJsonSchema(anyString());
