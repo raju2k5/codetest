@@ -1,5 +1,46 @@
- I’m pleased to inform you that the project is progressing as planned, and we are on track to meet our goals.
+private File convertCsvToParquet(List<String[]> csvData, Schema avroSchema, String fileName) throws IOException {
+    File parquetFile = new File(fileName);
 
-Barring any unforeseen issues, we expect to have the development completed and ready for deployment to the production environment by September 15th. I will continue to keep you informed of our progress and any potential changes to this timeline.
+    try (ParquetWriter<GenericRecord> writer = AvroParquetWriter.<GenericRecord>builder(new org.apache.hadoop.fs.Path(parquetFile.getAbsolutePath()))
+            .withSchema(avroSchema)
+            .withConf(new org.apache.hadoop.conf.Configuration())
+            .withValidation(false)
+            .withCompressionCodec(CompressionCodecName.SNAPPY)
+            .build()) {
 
-Please feel free to reach out if you have any questions or require further information.
+        // Get the CSV header (first row)
+        String[] headers = csvData.get(0);
+        boolean firstRow = true;
+
+        for (String[] record : csvData) {
+            if (firstRow) {
+                firstRow = false;
+                continue; // Skip header row
+            }
+
+            GenericRecord avroRecord = new GenericData.Record(avroSchema);
+
+            // Map CSV columns to Avro schema fields by name
+            for (Schema.Field field : avroSchema.getFields()) {
+                String fieldName = field.name();
+
+                // Check if the CSV has this field
+                int columnIndex = Arrays.asList(headers).indexOf(fieldName);
+                if (columnIndex >= 0 && columnIndex < record.length) {
+                    String value = record[columnIndex];
+                    avroRecord.put(fieldName, value);
+                } else {
+                    // Write null if the column is missing
+                    avroRecord.put(fieldName, null);
+                }
+            }
+
+            writer.write(avroRecord);
+        }
+    } catch (IOException e) {
+        logger.error("Error writing Parquet file: {}", e.getMessage());
+        throw new IOException("Error converting CSV data to Parquet", e);
+    }
+
+    return parquetFile;
+}
