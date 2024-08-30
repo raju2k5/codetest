@@ -1,16 +1,45 @@
-private File convertCsvToParquet(List<String[]> csvData, Schema avroSchema, String fileName) throws IOException {
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.parquet.avro.AvroParquetWriter;
+import org.apache.parquet.hadoop.ParquetWriter;
+import org.apache.parquet.hadoop.metadata.CompressionCodecName;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.File;
+import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.List;
+
+public File convertCsvToParquet(List<String[]> csvData, Schema avroSchema, String fileName) throws IOException {
     File parquetFile = new File(fileName);
+
+    Configuration hadoopConfig = new Configuration();
+    hadoopConfig.set("parquet.native.enabled", "false");
+
+    Logger log = LoggerFactory.getLogger(SnapshotServiceImpl.class);
+    log.debug("Starting Parquet file writing. Output file: {}", fileName);
+
+    int totalParquetRecords = 0;
 
     try (ParquetWriter<GenericRecord> writer = AvroParquetWriter.<GenericRecord>builder(new org.apache.hadoop.fs.Path(parquetFile.getAbsolutePath()))
             .withSchema(avroSchema)
-            .withConf(new org.apache.hadoop.conf.Configuration())
+            .withConf(hadoopConfig)
             .withValidation(false)
             .withCompressionCodec(CompressionCodecName.SNAPPY)
             .build()) {
 
-        // Get the CSV header (first row)
-        String[] headers = csvData.get(0);
+        // Get the current date and timestamp
+        String currentDate = new SimpleDateFormat("yyyy-MM-dd").format(new Date());
+        String currentTimestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
+
+        // Skip the first row (header row)
         boolean firstRow = true;
+        String[] headers = csvData.get(0);
 
         for (String[] record : csvData) {
             if (firstRow) {
@@ -24,21 +53,42 @@ private File convertCsvToParquet(List<String[]> csvData, Schema avroSchema, Stri
             for (Schema.Field field : avroSchema.getFields()) {
                 String fieldName = field.name();
 
-                // Check if the CSV has this field
+                // CSV headers should match Avro field names
                 int columnIndex = Arrays.asList(headers).indexOf(fieldName);
-                if (columnIndex >= 0 && columnIndex < record.length) {
+                if (columnIndex == -1 || columnIndex >= record.length) {
+                    // If the column is missing in CSV, handle specific fields
+                    if ("EFF_DT".equals(fieldName)) {
+                        avroRecord.put(fieldName, currentDate);
+                        log.info("Field '{}' not found in CSV. Using current date: {}", fieldName, currentDate);
+                    } else if ("ETL_TS".equals(fieldName)) {
+                        avroRecord.put(fieldName, currentTimestamp);
+                        log.info("Field '{}' not found in CSV. Using current timestamp: {}", fieldName, currentTimestamp);
+                    } else {
+                        log.warn("Column '{}' is missing in CSV, writing null for Avro field '{}'", fieldName, fieldName);
+                        avroRecord.put(fieldName, null);
+                    }
+                } else {
                     String value = record[columnIndex];
                     avroRecord.put(fieldName, value);
-                } else {
-                    // Write null if the column is missing
-                    avroRecord.put(fieldName, null);
                 }
             }
 
             writer.write(avroRecord);
+            totalParquetRecords++;
         }
+
+        log.info("Parquet file written successfully. File: {}", fileName);
+        log.info("Total records written to Parquet file: {}", totalParquetRecords);
+
+        // Compare the total records in CSV and Parquet data
+        if (totalParquetRecords == (csvData.size() - 1)) {
+            log.info("Record count matches between CSV and Parquet files.");
+        } else {
+            log.warn("Record count mismatch: CSV records = {}, Parquet records = {}", csvData.size() - 1, totalParquetRecords);
+        }
+
     } catch (IOException e) {
-        logger.error("Error writing Parquet file: {}", e.getMessage());
+        log.error("Error writing Parquet file: {}", e.getMessage(), e);
         throw new IOException("Error converting CSV data to Parquet", e);
     }
 
