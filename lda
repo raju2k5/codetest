@@ -10,9 +10,10 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
-import java.text.SimpleDateFormat;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
-import java.util.Date;
 import java.util.List;
 
 public File convertCsvToParquet(List<String[]> csvData, Schema avroSchema, String fileName) throws IOException {
@@ -33,9 +34,9 @@ public File convertCsvToParquet(List<String[]> csvData, Schema avroSchema, Strin
             .withCompressionCodec(CompressionCodecName.SNAPPY)
             .build()) {
 
-        // Get the current date and timestamp
-        String currentDate = new SimpleDateFormat("yyyy-MM-dd").format(new Date());
-        String currentTimestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
+        // Get the current date and timestamp formatted similarly to the Python example
+        String currentDate = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+        String currentTimestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss"));
 
         // Skip the first row (header row)
         boolean firstRow = true;
