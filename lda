@@ -16,17 +16,30 @@ import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.List;
 
+/**
+ * Converts CSV data into a Parquet file using the provided Avro schema.
+ *
+ * @param csvData List of CSV records (String arrays) with the first row containing headers
+ * @param avroSchema The Avro schema to be used for Parquet file generation
+ * @param fileName The name of the output Parquet file
+ * @return The generated Parquet file
+ * @throws IOException If an error occurs during Parquet file writing
+ */
 public File convertCsvToParquet(List<String[]> csvData, Schema avroSchema, String fileName) throws IOException {
+    // Define the output file
     File parquetFile = new File(fileName);
 
+    // Set Hadoop configuration for Parquet writer
     Configuration hadoopConfig = new Configuration();
     hadoopConfig.set("parquet.native.enabled", "false");
 
+    // Initialize logger for the class
     Logger log = LoggerFactory.getLogger(SnapshotServiceImpl.class);
     log.debug("Starting Parquet file writing. Output file: {}", fileName);
 
-    int totalParquetRecords = 0;
+    int totalParquetRecords = 0; // Counter for the total Parquet records written
 
+    // Set up the Parquet writer with Avro schema and configuration
     try (ParquetWriter<GenericRecord> writer = AvroParquetWriter.<GenericRecord>builder(new org.apache.hadoop.fs.Path(parquetFile.getAbsolutePath()))
             .withSchema(avroSchema)
             .withConf(hadoopConfig)
@@ -34,54 +47,59 @@ public File convertCsvToParquet(List<String[]> csvData, Schema avroSchema, Strin
             .withCompressionCodec(CompressionCodecName.SNAPPY)
             .build()) {
 
-        // Get the current date and timestamp formatted similarly to the Python example
+        // Get the current date and timestamp for metadata fields
         String currentDate = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
         String currentTimestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss"));
 
         // Skip the first row (header row)
         boolean firstRow = true;
-        String[] headers = csvData.get(0);
+        String[] headers = csvData.get(0); // Assuming the first row contains the column headers
 
+        // Iterate through CSV records, starting from the second row
         for (String[] record : csvData) {
             if (firstRow) {
                 firstRow = false;
-                continue; // Skip header row
+                continue; // Skip the header row
             }
 
+            // Create a new Avro record based on the schema
             GenericRecord avroRecord = new GenericData.Record(avroSchema);
 
-            // Map CSV columns to Avro schema fields by name
+            // Map CSV columns to Avro fields by matching field names
             for (Schema.Field field : avroSchema.getFields()) {
                 String fieldName = field.name();
 
-                // CSV headers should match Avro field names
+                // Find the column index for the Avro field in the CSV header
                 int columnIndex = Arrays.asList(headers).indexOf(fieldName);
+
+                // If the field is missing, handle special fields
                 if (columnIndex == -1 || columnIndex >= record.length) {
-                    // If the column is missing in CSV, handle specific fields
                     if ("EFF_DT".equals(fieldName)) {
+                        // Assign the current date if EFF_DT is missing
                         avroRecord.put(fieldName, currentDate);
                         log.info("Field '{}' not found in CSV. Using current date: {}", fieldName, currentDate);
                     } else if ("ETL_TS".equals(fieldName)) {
+                        // Assign the current timestamp if ETL_TS is missing
                         avroRecord.put(fieldName, currentTimestamp);
                         log.info("Field '{}' not found in CSV. Using current timestamp: {}", fieldName, currentTimestamp);
-                    } else {
-                        log.warn("Column '{}' is missing in CSV, writing null for Avro field '{}'", fieldName, fieldName);
-                        avroRecord.put(fieldName, null);
-                    }
+                    } 
                 } else {
+                    // Populate the Avro record with CSV data
                     String value = record[columnIndex];
                     avroRecord.put(fieldName, value);
                 }
             }
 
+            // Write the Avro record to the Parquet file
             writer.write(avroRecord);
-            totalParquetRecords++;
+            totalParquetRecords++; // Increment the record count
         }
 
+        // Log successful file creation and total records written
         log.info("Parquet file written successfully. File: {}", fileName);
         log.info("Total records written to Parquet file: {}", totalParquetRecords);
 
-        // Compare the total records in CSV and Parquet data
+        // Verify the record count between CSV and Parquet
         if (totalParquetRecords == (csvData.size() - 1)) {
             log.info("Record count matches between CSV and Parquet files.");
         } else {
@@ -89,9 +107,11 @@ public File convertCsvToParquet(List<String[]> csvData, Schema avroSchema, Strin
         }
 
     } catch (IOException e) {
+        // Log and rethrow any errors encountered during Parquet file writing
         log.error("Error writing Parquet file: {}", e.getMessage(), e);
         throw new IOException("Error converting CSV data to Parquet", e);
     }
 
+    // Return the generated Parquet file
     return parquetFile;
 }
