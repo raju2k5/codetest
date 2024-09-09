@@ -101,4 +101,3 @@ public File convertCsvToParquet(List<String[]> csvData, Schema avroSchema, Strin
     }
 
     return parquetFile;
-}
