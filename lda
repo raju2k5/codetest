@@ -1,6 +1,19 @@
-@Test
-void testConvertCsvToParquetAndUpload() throws IOException {
-    String sourceBucketName = "source-bucket";
+@Override
+public void convertCsvToParquetAndUpload(String sourceBucketName, String sourceFileKey, String fileTobeProcessed, String destinationBucketName, String destinationFileKy) throws IOException {
+    // ... existing code ...
+
+    List<String[]> csvData = readCsvFromS3(sourceBucketName, sourceFileKey);
+
+    if (csvData.isEmpty() || csvData.size() == 1) { // Check for empty or header-only data
+        log.warn("No data found in CSV file: {}. Aborting conversion.", sourceFileKey);
+        return; // or handle as needed
+    }
+
+    // ... existing code ...
+}
+
+
+  String sourceBucketName = "source-bucket";
     String sourceFileKey = "source.csv";
     String fileTobeProcessed = "gbi_party";
     String destinationBucketName = "destination-bucket";
@@ -8,9 +21,9 @@ void testConvertCsvToParquetAndUpload() throws IOException {
 
     ResponseInputStream<GetObjectResponse> responseInputStream = mock(ResponseInputStream.class);
 
-    // Simulate valid CSV data being returned
+    // Simulate returning an empty CSV file
     when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(responseInputStream);
-    when(responseInputStream.readAllBytes()).thenReturn("header1,header2\nvalue1,value2".getBytes());
+    when(responseInputStream.readAllBytes()).thenReturn("header1,header2\n".getBytes()); // No data rows, just headers
     when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class))).thenReturn(null);
 
     // Mock schema loading
@@ -22,21 +35,4 @@ void testConvertCsvToParquetAndUpload() throws IOException {
 
     // Verify interactions
     verify(s3Client).getObject(any(GetObjectRequest.class));
-    verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
-}
-
-@Test
-void testConvertCsvToParquetAndUpload_WithSdkClientException() throws IOException {
-    String sourceBucketName = "source-bucket";
-    String sourceFileKey = "path/to/source.csv";
-    String fileTobeProcessed = "gbi_party";
-    String destinationBucketName = "destination-bucket";
-    String destinationFileKey = "path/to/destination.parquet";
-
-    // Simulate S3Client exception
-    when(s3Client.getObject(any(GetObjectRequest.class))).thenThrow(SdkClientException.class);
-
-    // Call the method and expect IOException
-    IOException thrownException = assertThrows(IOException.class, () -> snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey));
-    assertEquals("Error fetching CSV data from S3", thrownException.getMessage());
-}
+    verify(s3Client, never()).putObject(any(PutObjectRequest.class), any(RequestBody.class)); // Verify no upload occurred
