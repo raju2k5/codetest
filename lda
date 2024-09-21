@@ -21,18 +21,27 @@ void testConvertCsvToParquetAndUpload_RecordCount() throws IOException {
 
     // Mock the schema loading
     String schemaJson = "{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}, {\"name\": \"EFF_DT\", \"type\": \"string\"}, {\"name\": \"ETL_TS\", \"type\": \"string\"}]}";
-    when(snapshotService.loadJsonSchema(anyString())).thenReturn(schemaJson);
+    snapshotService = spy(snapshotService);
+    doReturn(schemaJson).when(snapshotService).loadJsonSchema(anyString());
 
-    // Mock the convertCsvToParquet method to return a dummy file object
+    // Mock convertCsvToParquet to return a dummy file object
     File mockedFile = new File("mocked-file.parquet");
-    when(snapshotService.convertCsvToParquet(anyList(), any(Schema.class), anyString())).thenReturn(mockedFile);
+    doReturn(mockedFile).when(snapshotService).convertCsvToParquet(anyList(), any(Schema.class), anyString());
 
     // Call the method under test and check for exceptions
     assertDoesNotThrow(() -> snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey));
 
-    // Verify the CSV data passed
-    verify(snapshotService).convertCsvToParquet(anyList(), any(Schema.class), anyString());
+    // Use ArgumentCaptor to capture the arguments passed to convertCsvToParquet and verify them
+    ArgumentCaptor<List> csvDataCaptor = ArgumentCaptor.forClass(List.class);
+    ArgumentCaptor<Schema> schemaCaptor = ArgumentCaptor.forClass(Schema.class);
+    ArgumentCaptor<String> fileNameCaptor = ArgumentCaptor.forClass(String.class);
 
+    verify(snapshotService).convertCsvToParquet(csvDataCaptor.capture(), schemaCaptor.capture(), fileNameCaptor.capture());
+
+    // Verify the CSV data passed
+    assertEquals(mockCsvData, csvDataCaptor.getValue());
+    // Verify that the Parquet conversion was called
+    verify(snapshotService).convertCsvToParquet(anyList(), any(Schema.class), anyString());
     // Verify that the S3 upload was attempted
     verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
 }
