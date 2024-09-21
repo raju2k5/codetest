@@ -1,39 +1,29 @@
-@Override
-public List<String[]> readCsvFromS3(String bucketName, String key) throws IOException, SdkClientException {
-    GetObjectRequest getObjectRequest = GetObjectRequest.builder()
-            .bucket(bucketName)
-            .key(key)
-            .build();
-
-    try (ResponseInputStream<GetObjectResponse> objectStream = s3Client.getObject(getObjectRequest);
-         Reader reader = new InputStreamReader(objectStream);
-         CSVReader csvReader = new CSVReader(reader)) {
-
-        List<String[]> csvData = csvReader.readAll();
-        return csvData.isEmpty() ? Collections.emptyList() : csvData; // Ensure empty list if no data
-    } catch (CsvException e) {
-        throw new IOException("Error reading CSV data from S3", e);
-    }
-}
-
-
-
 @Test
-void testConvertCsvToParquetAndUpload_WithEmptyCsv() throws IOException {
+void testConvertCsvToParquetAndUpload_ValidCsv() throws IOException {
     String sourceBucketName = "source-bucket";
     String sourceFileKey = "source.csv";
     String fileTobeProcessed = "gbi_party";
     String destinationBucketName = "destination-bucket";
     String destinationFileKey = "destination.parquet";
 
+    // Mocking the S3 client response
     ResponseInputStream<GetObjectResponse> responseInputStream = mock(ResponseInputStream.class);
-    when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(responseInputStream);
-    when(responseInputStream.readAllBytes()).thenReturn("".getBytes()); // Simulating empty CSV
+    GetObjectResponse getObjectResponse = mock(GetObjectResponse.class);
 
-    // Mock other necessary methods...
-    
+    // Mocking CSV content
+    String csvContent = "header1,header2\nvalue1,value2";
+    when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(responseInputStream);
+    when(responseInputStream.readAllBytes()).thenReturn(csvContent.getBytes()); // Provide valid CSV data
+    when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class))).thenReturn(null);
+
+    // Mock Schema loading
+    snapshotService = spy(snapshotService);
+    doReturn("{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}").when(snapshotService).loadJsonSchema(anyString());
+
+    // Execute the method under test and expect no exceptions
     assertDoesNotThrow(() -> snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey));
 
+    // Verify interactions
     verify(s3Client).getObject(any(GetObjectRequest.class));
-    verify(s3Client, never()).putObject(any(PutObjectRequest.class), any(RequestBody.class)); // No upload should occur
+    verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class)); // Should occur
 }
