@@ -1,44 +1,86 @@
-@Test
-void testConvertCsvToParquetAndUpload_RecordCount() throws IOException {
-    String sourceBucketName = "source-bucket";
-    String sourceFileKey = "path/to/source.csv";
-    String fileTobeProcessed = "gbi_party";
-    String destinationBucketName = "destination-bucket";
-    String destinationFileKey = "path/to/destination.parquet";
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.mockito.InjectMocks;
+import org.mockito.MockitoAnnotations;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import software.amazon.awssdk.services.s3.S3Client;
+import org.apache.avro.Schema;
 
-    // Mock CSV data with a header and two rows
-    String csvContent = "header1,header2\nvalue1,value2\nvalue3,value4";
-    List<String[]> mockCsvData = Arrays.asList(
-        new String[]{"header1", "header2"},
-        new String[]{"value1", "value2"},
-        new String[]{"value3", "value4"}
-    );
+import java.io.*;
 
-    // Mock the S3 client behavior
-    ResponseInputStream<GetObjectResponse> mockResponseInputStream = mock(ResponseInputStream.class);
-    when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(mockResponseInputStream);
-    when(mockResponseInputStream.readAllBytes()).thenReturn(csvContent.getBytes());
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
-    // Mock the schema loading
-    snapshotService = spy(snapshotService);
-    doReturn("{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}").when(snapshotService).loadJsonSchema(anyString());
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.core.ResponseInputStream;
+import software.amazon.awssdk.core.exception.SdkClientException;
 
-    // Mock convertCsvToParquet to return a non-null value without writing a file
-    doReturn(new File("mocked-file")).when(snapshotService).convertCsvToParquet(anyList(), any(Schema.class), anyString());
+import static org.junit.jupiter.api.Assertions.*;
 
-    assertDoesNotThrow(() -> snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey));
 
-    // Use ArgumentCaptor to capture the arguments passed to convertCsvToParquet and verify them
-    ArgumentCaptor<List> csvDataCaptor = ArgumentCaptor.forClass(List.class);
-    ArgumentCaptor<Schema> schemaCaptor = ArgumentCaptor.forClass(Schema.class);
-    ArgumentCaptor<String> fileNameCaptor = ArgumentCaptor.forClass(String.class);
+class SnapshotServiceImplTest {
+
+    @Mock
+    private S3Client s3Client;
+
+    @InjectMocks
+    private SnapshotServiceImpl snapshotService;
+
+    @BeforeEach
+    void setUp() {
+        MockitoAnnotations.openMocks(this);
+    }
+
     
-    verify(snapshotService).convertCsvToParquet(csvDataCaptor.capture(), schemaCaptor.capture(), fileNameCaptor.capture());
+    @Test
+    void testConvertCsvToParquetAndUpload() throws IOException {
+        
+        String sourceBucketName = "source-bucket";
+        String sourceFileKey = "source.csv";
+        String fileTobeProcessed = "gbi_party";
+        String destinationBucketName = "destination-bucket";
+        String destinationFileKey = "destination.parquet";
 
-    // Verify the CSV data passed
-    assertEquals(mockCsvData, csvDataCaptor.getValue());
-    // Verify that the Parquet conversion was called
-    verify(snapshotService).convertCsvToParquet(anyList(), any(Schema.class), anyString());
-    // Verify that the S3 upload was attempted
-    verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
+        ResponseInputStream<GetObjectResponse> ResponseInputStream = mock(ResponseInputStream.class);
+
+       // Simulate S3Client exception
+        when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(ResponseInputStream);
+        when(ResponseInputStream.readAllBytes()).thenReturn("header1, header2\nvalue1, value2".getBytes());
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class))).thenReturn(null);
+
+        //Mock Schema loading
+        snapshotService = spy(snapshotService);
+        doReturn("{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}").when(snapshotService).loadJsonSchema(anyString());
+
+        assertDoesNotThrow(() -> snapshotService.convertCsvToParquetAndUpload(sourceBucketName. sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey));
+
+        //Verify interactions
+        verify(s3Client).getObject(any(GetObjectRequest.class));
+        verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
+    }
+
+
+    @Test
+    void testConvertCsvToParquetAndUpload() throws IOException {
+        
+        String sourceBucketName = "source-bucket";
+        String sourceFileKey = "path/to/source.csv";
+        String fileTobeProcessed = "gbi_party";
+        String destinationBucketName = "destination-bucket";
+        String destinationFileKey = "path/to/destination.parquet";
+
+        ResponseInputStream<GetObjectResponse> ResponseInputStream = mock(ResponseInputStream.class);
+
+       // Simulate S3Client exception
+        when(s3Client.getObject(any(GetObjectRequest.class))).thenThrow(SdkClientException.class);
+
+        // Execute the method under test and expect IOException with specific message
+        IOException thrownException = assertThrows(IOException.class, () -> snapshotService.convertCsvToParquetAndUpload(sourceBucketName. sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey));
+        assertEquals("Error fetching CSV data from S3", thrownException.getMessage());
+    }
 }
