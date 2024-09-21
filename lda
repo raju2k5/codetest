@@ -23,15 +23,23 @@ void testConvertCsvToParquetAndUpload_RecordCount() throws IOException {
     snapshotService = spy(snapshotService);
     doReturn("{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}, {\"name\": \"EFF_DT\", \"type\": \"string\"}, {\"name\": \"ETL_TS\", \"type\": \"string\"}]}").when(snapshotService).loadJsonSchema(anyString());
 
-    // Mock convertCsvToParquet to avoid writing an actual file and return a non-null value
-    File mockedFile = mock(File.class);  // Mock the File object itself
-    when(mockedFile.exists()).thenReturn(true);  // Mock behavior to prevent FileNotFound errors
+    // Mock the File and Path to avoid actual file system interaction
+    File mockedFile = mock(File.class);
+    when(mockedFile.getAbsolutePath()).thenReturn("/mocked/path/to/parquet-file");
+    when(mockedFile.exists()).thenReturn(true);
+
+    // Mock the convertCsvToParquet method to return the mocked file
     doReturn(mockedFile).when(snapshotService).convertCsvToParquet(anyList(), any(Schema.class), anyString());
 
-    // Call the method to test
+    // Add debugging to trace the issue
+    System.out.println("Before calling convertCsvToParquetAndUpload"); // Debugging
+
+    // Call the method under test and check for exceptions
     assertDoesNotThrow(() -> snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey));
 
-    // Use ArgumentCaptor to capture the arguments passed to convertCsvToParquet and verify them
+    System.out.println("After calling convertCsvToParquetAndUpload"); // Debugging
+
+    // Capture arguments for convertCsvToParquet
     ArgumentCaptor<List> csvDataCaptor = ArgumentCaptor.forClass(List.class);
     ArgumentCaptor<Schema> schemaCaptor = ArgumentCaptor.forClass(Schema.class);
     ArgumentCaptor<String> fileNameCaptor = ArgumentCaptor.forClass(String.class);
@@ -47,7 +55,7 @@ void testConvertCsvToParquetAndUpload_RecordCount() throws IOException {
     // Verify that the S3 upload was attempted
     verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
 
-    // Verify that the "EFF_DT" and "ETL_TS" fields are added
+    // Verify that the "EFF_DT" and "ETL_TS" fields are added in schema
     Schema capturedSchema = schemaCaptor.getValue();
     assertNotNull(capturedSchema.getField("EFF_DT"));
     assertNotNull(capturedSchema.getField("ETL_TS"));
