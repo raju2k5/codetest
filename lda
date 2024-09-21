@@ -6,30 +6,27 @@ void testConvertCsvToParquetAndUpload_RecordCount() throws IOException {
     String destinationBucketName = "destination-bucket";
     String destinationFileKey = "path/to/destination.parquet";
 
-    // Mock CSV data with headers and two rows
+    // Mock CSV data with a header and two rows
+    String csvContent = "header1,header2\nvalue1,value2\nvalue3,value4";
     List<String[]> mockCsvData = Arrays.asList(
-        new String[]{"header1", "header2"},          // Header row
-        new String[]{"value1", "value2"},            // First data row
-        new String[]{"value3", "value4"}             // Second data row
+        new String[]{"header1", "header2"},
+        new String[]{"value1", "value2"},
+        new String[]{"value3", "value4"}
     );
 
     // Mock the S3 client behavior
     ResponseInputStream<GetObjectResponse> mockResponseInputStream = mock(ResponseInputStream.class);
     when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(mockResponseInputStream);
-    when(mockResponseInputStream.readAllBytes()).thenReturn("header1,header2\nvalue1,value2\nvalue3,value4".getBytes());
+    when(mockResponseInputStream.readAllBytes()).thenReturn(csvContent.getBytes());
 
     // Mock the schema loading
     snapshotService = spy(snapshotService);
-    doReturn("{\"type\": \"record\", \"name\": \"test\", \"fields\": [" +
-            "{\"name\": \"header1\", \"type\": \"string\"}," +
-            "{\"name\": \"header2\", \"type\": \"string\"}," +
-            "{\"name\": \"EFF_DT\", \"type\": \"string\"}," +
-            "{\"name\": \"ETL_TS\", \"type\": \"string\"}" +
-            "]}").when(snapshotService).loadJsonSchema(anyString());
+    doReturn("{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}, {\"name\": \"EFF_DT\", \"type\": \"string\"}, {\"name\": \"ETL_TS\", \"type\": \"string\"}]}").when(snapshotService).loadJsonSchema(anyString());
 
     // Mock convertCsvToParquet to return a non-null value without writing a file
     doReturn(new File("mocked-file")).when(snapshotService).convertCsvToParquet(anyList(), any(Schema.class), anyString());
 
+    // Call the method to test
     assertDoesNotThrow(() -> snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey));
 
     // Use ArgumentCaptor to capture the arguments passed to convertCsvToParquet and verify them
@@ -47,4 +44,9 @@ void testConvertCsvToParquetAndUpload_RecordCount() throws IOException {
 
     // Verify that the S3 upload was attempted
     verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
+
+    // Verify that the "EFF_DT" and "ETL_TS" fields are added
+    Schema capturedSchema = schemaCaptor.getValue();
+    assertNotNull(capturedSchema.getField("EFF_DT"));
+    assertNotNull(capturedSchema.getField("ETL_TS"));
 }
