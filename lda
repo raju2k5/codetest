@@ -1,12 +1,4 @@
-@Test
-void testConvertCsvToParquetAndUpload_RecordCount() throws IOException {
-    String sourceBucketName = "source-bucket";
-    String sourceFileKey = "path/to/source.csv";
-    String fileTobeProcessed = "gbi_party";
-    String destinationBucketName = "destination-bucket";
-    String destinationFileKey = "path/to/destination.parquet";
-
-    // Mock CSV data with a header and two rows
+// Mock CSV data with a header and two rows
     String csvContent = "header1,header2\nvalue1,value2\nvalue3,value4";
     List<String[]> mockCsvData = Arrays.asList(
         new String[]{"header1", "header2"},
@@ -23,8 +15,9 @@ void testConvertCsvToParquetAndUpload_RecordCount() throws IOException {
     snapshotService = spy(snapshotService);
     doReturn("{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}, {\"name\": \"EFF_DT\", \"type\": \"string\"}, {\"name\": \"ETL_TS\", \"type\": \"string\"}]}").when(snapshotService).loadJsonSchema(anyString());
 
-    // Mock convertCsvToParquet to return a non-null value without writing a file
-    doReturn(new File("mocked-file")).when(snapshotService).convertCsvToParquet(anyList(), any(Schema.class), anyString());
+    // Create a temporary file instead of returning a non-existent file
+    File tempFile = File.createTempFile("mocked", ".parquet");
+    doReturn(tempFile).when(snapshotService).convertCsvToParquet(anyList(), any(Schema.class), anyString());
 
     // Test method execution without exception
     assertDoesNotThrow(() -> snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey));
@@ -49,7 +42,9 @@ void testConvertCsvToParquetAndUpload_RecordCount() throws IOException {
     verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
     
     // Additional checks can be added to ensure the file name is as expected
-    assertEquals("mocked-file", fileNameCaptor.getValue());
+    assertEquals(tempFile.getAbsolutePath(), fileNameCaptor.getValue());
 
     // Optionally, verify that the logging of record count match is called (if applicable)
-}
+
+    // Clean up the temporary file
+    tempFile.delete();
