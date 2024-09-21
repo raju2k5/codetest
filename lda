@@ -6,24 +6,24 @@ void testConvertCsvToParquetAndUpload_ValidCsv() throws IOException {
     String destinationBucketName = "destination-bucket";
     String destinationFileKey = "destination.parquet";
 
-    // Mocking the S3 client response
+    // Mock the response input stream for the CSV file
     ResponseInputStream<GetObjectResponse> responseInputStream = mock(ResponseInputStream.class);
-    GetObjectResponse getObjectResponse = mock(GetObjectResponse.class);
 
-    // Mocking CSV content
+    // Provide valid CSV content with headers and data
     String csvContent = "header1,header2\nvalue1,value2";
-    when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(responseInputStream);
-    when(responseInputStream.readAllBytes()).thenReturn(csvContent.getBytes()); // Provide valid CSV data
-    when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class))).thenReturn(null);
 
-    // Mock Schema loading
+    // Mock the behavior of getting the CSV file from S3
+    when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(responseInputStream);
+    when(responseInputStream.readAllBytes()).thenReturn(csvContent.getBytes());
+
+    // Mock the schema loading
     snapshotService = spy(snapshotService);
     doReturn("{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}").when(snapshotService).loadJsonSchema(anyString());
 
-    // Execute the method under test and expect no exceptions
+    // Call the method and assert it does not throw exceptions
     assertDoesNotThrow(() -> snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey));
 
-    // Verify interactions
+    // Verify interactions with the S3 client
     verify(s3Client).getObject(any(GetObjectRequest.class));
-    verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class)); // Should occur
+    verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
 }
