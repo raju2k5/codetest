@@ -66,7 +66,7 @@ class SnapshotServiceImplTest {
 
 
     @Test
-    void testConvertCsvToParquetAndUpload() throws IOException {
+    void testConvertCsvToParquetAndUpload_S3ClientException() throws IOException {
         
         String sourceBucketName = "source-bucket";
         String sourceFileKey = "path/to/source.csv";
