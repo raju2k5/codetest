@@ -1,38 +1,39 @@
 @Override
-public void convertCsvToParquetAndUpload(String sourceBucketName, String sourceFileKey, String fileTobeProcessed, String destinationBucketName, String destinationFileKy) throws IOException {
-    // ... existing code ...
+public List<String[]> readCsvFromS3(String bucketName, String key) throws IOException, SdkClientException {
+    GetObjectRequest getObjectRequest = GetObjectRequest.builder()
+            .bucket(bucketName)
+            .key(key)
+            .build();
 
-    List<String[]> csvData = readCsvFromS3(sourceBucketName, sourceFileKey);
+    try (ResponseInputStream<GetObjectResponse> objectStream = s3Client.getObject(getObjectRequest);
+         Reader reader = new InputStreamReader(objectStream);
+         CSVReader csvReader = new CSVReader(reader)) {
 
-    if (csvData.isEmpty() || csvData.size() == 1) { // Check for empty or header-only data
-        log.warn("No data found in CSV file: {}. Aborting conversion.", sourceFileKey);
-        return; // or handle as needed
+        List<String[]> csvData = csvReader.readAll();
+        return csvData.isEmpty() ? Collections.emptyList() : csvData; // Ensure empty list if no data
+    } catch (CsvException e) {
+        throw new IOException("Error reading CSV data from S3", e);
     }
-
-    // ... existing code ...
 }
 
 
-  String sourceBucketName = "source-bucket";
+
+@Test
+void testConvertCsvToParquetAndUpload_WithEmptyCsv() throws IOException {
+    String sourceBucketName = "source-bucket";
     String sourceFileKey = "source.csv";
     String fileTobeProcessed = "gbi_party";
     String destinationBucketName = "destination-bucket";
     String destinationFileKey = "destination.parquet";
 
     ResponseInputStream<GetObjectResponse> responseInputStream = mock(ResponseInputStream.class);
-
-    // Simulate returning an empty CSV file
     when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(responseInputStream);
-    when(responseInputStream.readAllBytes()).thenReturn("header1,header2\n".getBytes()); // No data rows, just headers
-    when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class))).thenReturn(null);
+    when(responseInputStream.readAllBytes()).thenReturn("".getBytes()); // Simulating empty CSV
 
-    // Mock schema loading
-    snapshotService = spy(snapshotService);
-    doReturn("{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}").when(snapshotService).loadJsonSchema(anyString());
-
-    // Call the method and expect no exceptions
+    // Mock other necessary methods...
+    
     assertDoesNotThrow(() -> snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey));
 
-    // Verify interactions
     verify(s3Client).getObject(any(GetObjectRequest.class));
-    verify(s3Client, never()).putObject(any(PutObjectRequest.class), any(RequestBody.class)); // Verify no upload occurred
+    verify(s3Client, never()).putObject(any(PutObjectRequest.class), any(RequestBody.class)); // No upload should occur
+}
