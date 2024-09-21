@@ -23,8 +23,10 @@ void testConvertCsvToParquetAndUpload_RecordCount() throws IOException {
     snapshotService = spy(snapshotService);
     doReturn("{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}, {\"name\": \"EFF_DT\", \"type\": \"string\"}, {\"name\": \"ETL_TS\", \"type\": \"string\"}]}").when(snapshotService).loadJsonSchema(anyString());
 
-    // Mock convertCsvToParquet to return a non-null value without writing a file
-    doReturn(new File("mocked-file")).when(snapshotService).convertCsvToParquet(anyList(), any(Schema.class), anyString());
+    // Mock convertCsvToParquet to avoid writing an actual file and return a non-null value
+    File mockedFile = mock(File.class);  // Mock the File object itself
+    when(mockedFile.exists()).thenReturn(true);  // Mock behavior to prevent FileNotFound errors
+    doReturn(mockedFile).when(snapshotService).convertCsvToParquet(anyList(), any(Schema.class), anyString());
 
     // Call the method to test
     assertDoesNotThrow(() -> snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey));
