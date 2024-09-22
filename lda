@@ -1,25 +1,10 @@
-@Test
-void testConvertCsvToParquetAndUpload_Success() throws IOException {
-    String sourceBucketName = "source-bucket";
-    String sourceFileKey = "source.csv";
-    String fileTobeProcessed = "gbi_party";
-    String destinationBucketName = "destination-bucket";
-    String destinationFileKey = "destination.parquet";
-
-    ResponseInputStream<GetObjectResponse> responseInputStream = mock(ResponseInputStream.class);
-    
-    // Simulate S3Client behavior
-    when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(responseInputStream);
-    when(responseInputStream.readAllBytes()).thenReturn("header1,header2,EFF_DT,ETL_TS\nvalue1,value2,2023-09-22,2023-09-22T10:00:00Z".getBytes());
-    when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class))).thenReturn(null);
-
-    // Mock Schema loading including EFF_DT and ETL_TS
-    snapshotService = spy(snapshotService);
-    doReturn("{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}, {\"name\": \"EFF_DT\", \"type\": \"string\"}, {\"name\": \"ETL_TS\", \"type\": \"string\"}]}").when(snapshotService).loadJsonSchema(anyString());
-
-    assertDoesNotThrow(() -> snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey));
-
-    // Verify interactions
-    verify(s3Client).getObject(any(GetObjectRequest.class));
-    verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
+{
+    "type": "record",
+    "name": "gbi_party",
+    "fields": [
+        {"name": "header1", "type": "string"},
+        {"name": "header2", "type": "string"},
+        {"name": "EFF_DT", "type": "string"},
+        {"name": "ETL_TS", "type": "string"}
+    ]
 }
