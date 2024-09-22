@@ -3,7 +3,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.mockito.InjectMocks;
 import org.mockito.MockitoAnnotations;
 import org.mockito.Mock;
-import org.mockito.Spy;
 import software.amazon.awssdk.services.s3.S3Client;
 import org.apache.avro.Schema;
 import java.io.*;
@@ -22,8 +21,7 @@ class SnapshotServiceImplTest {
     @Mock
     private S3Client s3Client;
 
-    // Use @Spy instead of @InjectMocks
-    @Spy
+    @InjectMocks
     private SnapshotServiceImpl snapshotService;
 
     @BeforeEach
@@ -44,21 +42,17 @@ class SnapshotServiceImplTest {
         // Simulate S3Client behavior
         when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(responseInputStream);
         
-        // Mock the CSV data with a header and one row of values
-        List<String[]> csvData = Arrays.asList(
-            new String[]{"header1", "header2"},  // Headers
-            new String[]{"value1", "value2"}     // Data row
-        );
+        // Mock the CSV content returned from S3
+        when(responseInputStream.readAllBytes()).thenReturn("header1,header2\nvalue1,value2".getBytes());
 
-        // Mock the readCsvFromS3 method to return this mocked CSV data
-        doReturn(csvData).when(snapshotService).readCsvFromS3(anyString(), anyString());
-
-        // Simulate schema loading
+        // Mock Schema loading
+        // Here we are directly mocking the `loadJsonSchema` method.
         doReturn("{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}").when(snapshotService).loadJsonSchema(anyString());
 
         // Mock S3 putObject behavior
         when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class))).thenReturn(null);
 
+        // No exception should be thrown, i.e., success case
         assertDoesNotThrow(() -> snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey));
 
         // Verify interactions
