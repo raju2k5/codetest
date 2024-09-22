@@ -1,16 +1,35 @@
 @Test
-void testReadCsvFromS3() throws IOException {
-    String csvContent = "header1,header2\nvalue1,value2";
-    ByteArrayInputStream inputStream = new ByteArrayInputStream(csvContent.getBytes());
-    CSVReader csvReader = new CSVReader(new InputStreamReader(inputStream));
+void testConvertCsvToParquetAndUpload_Success() throws IOException {
+    String sourceBucketName = "source-bucket";
+    String sourceFileKey = "source.csv";
+    String fileTobeProcessed = "gbi_party";
+    String destinationBucketName = "destination-bucket";
+    String destinationFileKey = "destination.parquet";
 
-    List<String[]> csvData = csvReader.readAll();
-    assertFalse(csvData.isEmpty(), "CSV data should not be empty");
-    assertEquals(2, csvData.size(), "CSV should have 2 rows including header");
+    ResponseInputStream<GetObjectResponse> responseInputStream = mock(ResponseInputStream.class);
+
+    // Simulate S3Client behavior
+    when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(responseInputStream);
+    
+    // Mock the CSV data with a header and one row of values
+    List<String[]> csvData = Arrays.asList(
+        new String[]{"header1", "header2"},  // Headers
+        new String[]{"value1", "value2"}     // Data row
+    );
+
+    // Mock the readCsvFromS3 method to return this mocked CSV data
+    doReturn(csvData).when(snapshotService).readCsvFromS3(anyString(), anyString());
+
+    // Simulate schema loading
+    snapshotService = spy(snapshotService);
+    doReturn("{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}").when(snapshotService).loadJsonSchema(anyString());
+
+    // Mock S3 putObject behavior
+    when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class))).thenReturn(null);
+
+    assertDoesNotThrow(() -> snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey));
+
+    // Verify interactions
+    verify(s3Client).getObject(any(GetObjectRequest.class));
+    verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
 }
-
-
-when(s3Client.getObject(any(GetObjectRequest.class))).thenAnswer(invocation -> {
-    // Return a mocked InputStream directly
-    return new ByteArrayInputStream(csvContent.getBytes());
-});
