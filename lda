@@ -6,29 +6,20 @@ void testConvertCsvToParquetAndUpload_Success() throws IOException {
     String destinationBucketName = "destination-bucket";
     String destinationFileKey = "destination.parquet";
 
-    // Mock the S3 client behavior for reading the CSV file
     ResponseInputStream<GetObjectResponse> responseInputStream = mock(ResponseInputStream.class);
+    
+    // Simulate S3Client behavior
     when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(responseInputStream);
-
-    // Create mocked CSV data
-    List<String[]> csvData = Arrays.asList(
-        new String[]{"header1", "header2"},   // First row as headers
-        new String[]{"value1", "value2"}      // Data row
-    );
-
-    // Spy on snapshotService and mock the readCsvFromS3 method to return the csvData
-    doReturn(csvData).when(snapshotService).readCsvFromS3(anyString(), anyString());
-
-    // Mock schema loading
-    doReturn("{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}").when(snapshotService).loadJsonSchema(anyString());
-
-    // Mock S3 putObject behavior
+    when(responseInputStream.readAllBytes()).thenReturn("header1,header2,EFF_DT,ETL_TS\nvalue1,value2,2023-09-22,2023-09-22T10:00:00Z".getBytes());
     when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class))).thenReturn(null);
 
-    // No exception should be thrown
+    // Mock Schema loading including EFF_DT and ETL_TS
+    snapshotService = spy(snapshotService);
+    doReturn("{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}, {\"name\": \"EFF_DT\", \"type\": \"string\"}, {\"name\": \"ETL_TS\", \"type\": \"string\"}]}").when(snapshotService).loadJsonSchema(anyString());
+
     assertDoesNotThrow(() -> snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey));
 
-    // Verify S3 interactions
+    // Verify interactions
     verify(s3Client).getObject(any(GetObjectRequest.class));
     verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
 }
