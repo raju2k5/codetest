@@ -74,4 +74,7 @@ class SnapshotServiceImplTest {
         when(s3Client.getObject(any(GetObjectRequest.class))).thenThrow(SdkClientException.class);
 
         // Execute the method under test and expect IOException with specific message
-        IOException thrownException = assertThrows(IOException.class, () -> snapshotService.convertCsvToParquetAndUpload(sourceBucketName,
+        IOException thrownException = assertThrows(IOException.class, () -> snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey));
+        assertEquals("Error fetching CSV data from S3", thrownException.getMessage());
+    }
+}
