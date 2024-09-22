@@ -1,76 +1,34 @@
-public File convertCsvToParquet(List<String[]> csvData, Schema avroSchema, String fileName) throws IOException {
-    File parquetFile = new File(fileName);
+@Test
+void testConvertCsvToParquetAndUpload_Success() throws IOException {
+    String sourceBucketName = "source-bucket";
+    String sourceFileKey = "source.csv";
+    String fileTobeProcessed = "gbi_party";
+    String destinationBucketName = "destination-bucket";
+    String destinationFileKey = "destination.parquet";
 
-    Configuration hadoopConfig = new Configuration();
-    hadoopConfig.set("parquet.native.enabled", "false");
+    // Mock the S3 client behavior for reading the CSV file
+    ResponseInputStream<GetObjectResponse> responseInputStream = mock(ResponseInputStream.class);
+    when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(responseInputStream);
+    
+    // Mocked CSV data, ensuring all fields are present
+    List<String[]> csvData = Arrays.asList(
+        new String[]{"header1", "header2", "EFF_DT", "ETL_TS"}, // Headers
+        new String[]{"value1", "value2", "", ""}               // Data row, EFF_DT and ETL_TS are empty
+    );
 
-    log.debug("Starting Parquet file writing. Output file: {}", fileName);
+    // Spy on snapshotService and mock the readCsvFromS3 method to return the csvData
+    doReturn(csvData).when(snapshotService).readCsvFromS3(anyString(), anyString());
 
-    int totalParquetRecords = 0;
+    // Mock schema loading
+    doReturn("{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}, {\"name\": \"EFF_DT\", \"type\": \"string\"}, {\"name\": \"ETL_TS\", \"type\": \"string\"}]}").when(snapshotService).loadJsonSchema(anyString());
 
-    try (ParquetWriter<GenericRecord> writer = AvroParquetWriter.<GenericRecord>builder(new org.apache.hadoop.fs.Path(parquetFile.getAbsolutePath()))
-            .withSchema(avroSchema)
-            .withConf(hadoopConfig)
-            .withValidation(false)
-            .withCompressionCodec(CompressionCodecName.SNAPPY)
-            .build()) {
+    // Mock S3 putObject behavior
+    when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class))).thenReturn(null);
 
-        String currentDate = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
-        String currentTimestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss"));
+    // No exception should be thrown
+    assertDoesNotThrow(() -> snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey));
 
-        boolean firstRow = true;
-        String[] headers = csvData.get(0);
-        log.debug("CSV Headers: {}", Arrays.toString(headers));
-
-        for (String[] record : csvData) {
-            if (firstRow) {
-                firstRow = false;
-                continue; // Skip the header row
-            }
-
-            GenericRecord avroRecord = new GenericData.Record(avroSchema);
-
-            // Always insert the date and timestamp for EFF_DT and ETL_TS manually
-            avroRecord.put("EFF_DT", currentDate);
-            log.info("Inserted current date '{}' for 'EFF_DT'", currentDate);
-            avroRecord.put("ETL_TS", currentTimestamp);
-            log.info("Inserted current timestamp '{}' for 'ETL_TS'", currentTimestamp);
-
-            for (Schema.Field field : avroSchema.getFields()) {
-                String fieldName = field.name();
-                if (!"EFF_DT".equals(fieldName) && !"ETL_TS".equals(fieldName)) {
-                    int columnIndex = Arrays.asList(headers).indexOf(fieldName);
-                    log.debug("Processing field: {}", fieldName);
-                    log.debug("Column index for '{}': {}", fieldName, columnIndex);
-
-                    if (columnIndex == -1 || columnIndex >= record.length) {
-                        avroRecord.put(fieldName, null); // Insert null if the field is missing
-                        log.info("Field '{}' not found in CSV. Inserting null.", fieldName);
-                    } else {
-                        String value = record[columnIndex];
-                        avroRecord.put(fieldName, value);
-                        log.debug("Field '{}' found in CSV with value: {}", fieldName, value);
-                    }
-                }
-            }
-
-            writer.write(avroRecord);
-            totalParquetRecords++;
-        }
-
-        log.info("Parquet file written successfully. File: {}", fileName);
-        log.info("Total records written to Parquet file: {}", totalParquetRecords);
-
-        if (totalParquetRecords == (csvData.size() - 1)) {
-            log.info("Record count matches between CSV and Parquet files.");
-        } else {
-            log.warn("Record count mismatch: CSV records = {}, Parquet records = {}", csvData.size() - 1, totalParquetRecords);
-        }
-
-    } catch (IOException e) {
-        log.error("Error writing Parquet file: {}", e.getMessage());
-        throw new IOException("Error converting CSV data to Parquet", e);
-    }
-
-    return parquetFile;
+    // Verify S3 interactions
+    verify(s3Client).getObject(any(GetObjectRequest.class));
+    verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
 }
