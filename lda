@@ -6,8 +6,9 @@ void testConvertCsvToParquetAndUpload_Success() throws IOException {
     String destinationBucketName = "destination-bucket";
     String destinationFileKey = "destination.parquet";
 
+    // Mock ResponseInputStream
     ResponseInputStream<GetObjectResponse> responseInputStream = mock(ResponseInputStream.class);
-    
+
     // Mock S3 client behavior
     when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(responseInputStream);
     when(responseInputStream.readAllBytes()).thenReturn("header1,header2\nvalue1,value2".getBytes());
@@ -19,17 +20,21 @@ void testConvertCsvToParquetAndUpload_Success() throws IOException {
         new String[]{"value1", "value2"}
     );
 
-    // Spy on snapshotService and mock readCsvFromS3 method
+    // Create a spy for snapshotService to mock its methods
     snapshotService = spy(snapshotService);
     doReturn(csvData).when(snapshotService).readCsvFromS3(anyString(), anyString());
 
     // Call the method
-    assertDoesNotThrow(() -> snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey));
+    try {
+        snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey);
+    } catch (IOException e) {
+        fail("Exception thrown during method execution: " + e.getMessage());
+    }
 
-    // Verify interactions
+    // Verify interactions with S3 client
     verify(s3Client).getObject(any(GetObjectRequest.class));
     verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
 
-    // Add logging to confirm
+    // Additional logging for confirmation
     System.out.println("Test completed successfully. Verifications done.");
 }
