@@ -1,35 +1,84 @@
-@Test
-void testConvertCsvToParquetAndUpload_Success() throws IOException {
-    String sourceBucketName = "source-bucket";
-    String sourceFileKey = "source.csv";
-    String fileTobeProcessed = "gbi_party";
-    String destinationBucketName = "destination-bucket";
-    String destinationFileKey = "destination.parquet";
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.mockito.InjectMocks;
+import org.mockito.MockitoAnnotations;
+import org.mockito.Mock;
+import org.mockito.Spy;
+import software.amazon.awssdk.services.s3.S3Client;
+import org.apache.avro.Schema;
+import java.io.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.core.ResponseInputStream;
+import software.amazon.awssdk.core.exception.SdkClientException;
+import static org.junit.jupiter.api.Assertions.*;
 
-    ResponseInputStream<GetObjectResponse> responseInputStream = mock(ResponseInputStream.class);
+class SnapshotServiceImplTest {
 
-    // Simulate S3Client behavior
-    when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(responseInputStream);
-    
-    // Mock the CSV data with a header and one row of values
-    List<String[]> csvData = Arrays.asList(
-        new String[]{"header1", "header2"},  // Headers
-        new String[]{"value1", "value2"}     // Data row
-    );
+    @Mock
+    private S3Client s3Client;
 
-    // Mock the readCsvFromS3 method to return this mocked CSV data
-    doReturn(csvData).when(snapshotService).readCsvFromS3(anyString(), anyString());
+    // Use @Spy instead of @InjectMocks
+    @Spy
+    private SnapshotServiceImpl snapshotService;
 
-    // Simulate schema loading
-    snapshotService = spy(snapshotService);
-    doReturn("{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}").when(snapshotService).loadJsonSchema(anyString());
+    @BeforeEach
+    void setUp() {
+        MockitoAnnotations.openMocks(this);
+    }
 
-    // Mock S3 putObject behavior
-    when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class))).thenReturn(null);
+    @Test
+    void testConvertCsvToParquetAndUpload_Success() throws IOException {
+        String sourceBucketName = "source-bucket";
+        String sourceFileKey = "source.csv";
+        String fileTobeProcessed = "gbi_party";
+        String destinationBucketName = "destination-bucket";
+        String destinationFileKey = "destination.parquet";
 
-    assertDoesNotThrow(() -> snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey));
+        ResponseInputStream<GetObjectResponse> responseInputStream = mock(ResponseInputStream.class);
 
-    // Verify interactions
-    verify(s3Client).getObject(any(GetObjectRequest.class));
-    verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
+        // Simulate S3Client behavior
+        when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(responseInputStream);
+        
+        // Mock the CSV data with a header and one row of values
+        List<String[]> csvData = Arrays.asList(
+            new String[]{"header1", "header2"},  // Headers
+            new String[]{"value1", "value2"}     // Data row
+        );
+
+        // Mock the readCsvFromS3 method to return this mocked CSV data
+        doReturn(csvData).when(snapshotService).readCsvFromS3(anyString(), anyString());
+
+        // Simulate schema loading
+        doReturn("{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}").when(snapshotService).loadJsonSchema(anyString());
+
+        // Mock S3 putObject behavior
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class))).thenReturn(null);
+
+        assertDoesNotThrow(() -> snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey));
+
+        // Verify interactions
+        verify(s3Client).getObject(any(GetObjectRequest.class));
+        verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
+    }
+
+    @Test
+    void testConvertCsvToParquetAndUpload_S3ClientException() throws IOException {
+        String sourceBucketName = "source-bucket";
+        String sourceFileKey = "path/to/source.csv";
+        String fileTobeProcessed = "gbi_party";
+        String destinationBucketName = "destination-bucket";
+        String destinationFileKey = "path/to/destination.parquet";
+
+        // Simulate S3Client exception
+        when(s3Client.getObject(any(GetObjectRequest.class))).thenThrow(SdkClientException.class);
+
+        // Execute the method under test and expect IOException with specific message
+        IOException thrownException = assertThrows(IOException.class, () -> snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey));
+        assertEquals("Error fetching CSV data from S3", thrownException.getMessage());
+    }
 }
