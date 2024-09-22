@@ -3,6 +3,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.mockito.InjectMocks;
 import org.mockito.MockitoAnnotations;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import software.amazon.awssdk.services.s3.S3Client;
 import org.apache.avro.Schema;
 import java.io.*;
@@ -22,11 +23,13 @@ class SnapshotServiceImplTest {
     private S3Client s3Client;
 
     @InjectMocks
-    private SnapshotServiceImpl snapshotService;
+    private SnapshotServiceImpl snapshotService;  // Will be turned into a spy in the setUp method
 
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
+        // Create a spy object for snapshotService to allow partial mocking
+        snapshotService = spy(snapshotService);
     }
 
     @Test
@@ -45,8 +48,7 @@ class SnapshotServiceImplTest {
         // Mock the CSV content returned from S3
         when(responseInputStream.readAllBytes()).thenReturn("header1,header2\nvalue1,value2".getBytes());
 
-        // Mock Schema loading
-        // Here we are directly mocking the `loadJsonSchema` method.
+        // Mock Schema loading using doReturn, now on a spy object
         doReturn("{\"type\": \"record\", \"name\": \"test\", \"fields\": [{\"name\": \"header1\", \"type\": \"string\"}, {\"name\": \"header2\", \"type\": \"string\"}]}").when(snapshotService).loadJsonSchema(anyString());
 
         // Mock S3 putObject behavior
@@ -72,7 +74,4 @@ class SnapshotServiceImplTest {
         when(s3Client.getObject(any(GetObjectRequest.class))).thenThrow(SdkClientException.class);
 
         // Execute the method under test and expect IOException with specific message
-        IOException thrownException = assertThrows(IOException.class, () -> snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey));
-        assertEquals("Error fetching CSV data from S3", thrownException.getMessage());
-    }
-}
+        IOException thrownException = assertThrows(IOException.class, () -> snapshotService.convertCsvToParquetAndUpload(sourceBucketName,
