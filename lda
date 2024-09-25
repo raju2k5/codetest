@@ -1,40 +1,7 @@
-@Test
-void testConvertCsvToParquetAndUpload_Success() throws IOException {
-    String sourceBucketName = "source-bucket";
-    String sourceFileKey = "source.csv";
-    String fileTobeProcessed = "gbi_party";
-    String destinationBucketName = "destination-bucket";
-    String destinationFileKey = "destination.parquet";
+As planned, I will proceed with the code deployment to production on September 27th, ensuring the system is ready. However, I had a call today with Srivatsa, Prasanth, Nidhula, and Gopi, during which Gopi explained the process to be followed before placing the production CSV data on the server.
 
-    // Mock ResponseInputStream
-    ResponseInputStream<GetObjectResponse> responseInputStream = mock(ResponseInputStream.class);
+It has been communicated that before moving the production CSV data, the regular GBI data pipeline must be paused for that specific business date to avoid any conflicts. However, they have mentioned that the regular data process is dependent on other systems and cannot be stopped without prior notifications.
 
-    // Mock S3 client behavior
-    when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(responseInputStream);
-    when(responseInputStream.readAllBytes()).thenReturn("header1,header2\nvalue1,value2".getBytes());
-    when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class))).thenReturn(null);
+In light of this, it is recommended that we include everyone, including Joe Salerno and Debbie, in our next Nudges call to discuss the matter further.
 
-    // Mock CSV data
-    List<String[]> csvData = Arrays.asList(
-        new String[]{"header1", "header2"},
-        new String[]{"value1", "value2"}
-    );
-
-    // Create a spy for snapshotService to mock its methods
-    snapshotService = spy(snapshotService);
-    doReturn(csvData).when(snapshotService).readCsvFromS3(anyString(), anyString());
-
-    // Call the method
-    try {
-        snapshotService.convertCsvToParquetAndUpload(sourceBucketName, sourceFileKey, fileTobeProcessed, destinationBucketName, destinationFileKey);
-    } catch (IOException e) {
-        fail("Exception thrown during method execution: " + e.getMessage());
-    }
-
-    // Verify interactions with S3 client
-    verify(s3Client).getObject(any(GetObjectRequest.class));
-    verify(s3Client).putObject(any(PutObjectRequest.class), any(RequestBody.class));
-
-    // Additional logging for confirmation
-    System.out.println("Test completed successfully. Verifications done.");
-}
+Srivatsa, please feel free to include your input as well.
