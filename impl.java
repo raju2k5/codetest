@@ -14,6 +14,7 @@ import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import com.opencsv.CSVReader;
+import com.opencsv.exceptions.CsvException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -36,17 +37,19 @@ public class SnapshotServiceImpl implements SnapshotService {
     }
 
     @Override
-    public void convertCsvToParquetAndUpload(String sourceBucketName, String sourceFileKey, String fileTobeProcessed, String destinationBucketName, String destinationFileKey) throws IOException {
+    public void convertCsvToParquetAndUpload(String sourceBucketName, String sourceFileKey, String fileTobeProcessed, String destinationBucketName, String destinationFileKey) throws CsvException, IOException {
         String tempFileName = "/tmp/output_" + System.currentTimeMillis() + ".parquet";
         log.info("Starting streaming CSV to Parquet process. Source: {}/{} -> Destination: {}/{}", 
                  sourceBucketName, sourceFileKey, destinationBucketName, destinationFileKey);
 
         try {
             // Step 1: Stream CSV data from S3
-            ResponseInputStream<GetObjectResponse> objectStream = s3Client.getObject(
-                    GetObjectRequest.builder().bucket(sourceBucketName).key(sourceFileKey).build());
-            CSVReader csvReader = new CSVReader(new InputStreamReader(objectStream));
-
+            List<String[]> csvData = readCsvFromS3(sourceBucketName, sourceFileKey);
+            CSVReader csvReader = new CSVReader(new InputStreamReader(s3Client.getObject(GetObjectRequest.builder()
+                .bucket(sourceBucketName)
+                .key(sourceFileKey)
+                .build())));
+            
             // Step 2: Set up ParquetWriter
             log.debug("Setting up ParquetWriter for temp file: {}", tempFileName);
             File parquetFile = new File(tempFileName);
@@ -91,6 +94,25 @@ public class SnapshotServiceImpl implements SnapshotService {
         return new String(inputStream.readAllBytes());
     }
 
+    @Override
+    public List<String[]> readCsvFromS3(String bucketName, String key) throws IOException {
+        GetObjectRequest getObjectRequest = GetObjectRequest.builder()
+                .bucket(bucketName)
+                .key(key)
+                .build();
+
+        log.debug("Fetching CSV file from S3 bucket: {}, key: {}", bucketName, key);
+        
+        try (ResponseInputStream<GetObjectResponse> objectStream = s3Client.getObject(getObjectRequest);
+             Reader reader = new InputStreamReader(objectStream);
+             CSVReader csvReader = new CSVReader(reader)) {
+
+            List<String[]> csvData = csvReader.readAll();
+            log.debug("CSV data successfully read from S3. Number of rows: {}", csvData.size());
+            return csvData;
+        }
+    }
+
     // Helper method to create Avro record
     private GenericRecord createAvroRecord(String[] row, String[] headers, Schema avroSchema, String currentDate, String currentTimestamp) {
         GenericRecord avroRecord = new GenericData.Record(avroSchema);
@@ -107,6 +129,38 @@ public class SnapshotServiceImpl implements SnapshotService {
         }
 
         return avroRecord;
+    }
+
+    @Override
+    public File convertCsvToParquet(List<String[]> csvData, Schema avroSchema, String fileName) throws IOException {
+        File parquetFile = new File(fileName);
+
+        Configuration hadoopConfig = new Configuration();
+        hadoopConfig.set("parquet.native.enabled", "false");
+
+        log.debug("Starting Parquet file writing. Output file: {}", fileName);
+
+        // Set up the Parquet writer
+        try (ParquetWriter<GenericRecord> writer = AvroParquetWriter.<GenericRecord>builder(new Path(parquetFile.getAbsolutePath()))
+                .withSchema(avroSchema)
+                .withConf(hadoopConfig)
+                .withValidation(false)
+                .withCompressionCodec(CompressionCodecName.SNAPPY)
+                .build()) {
+
+            String currentDate = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+            String currentTimestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss"));
+            String[] headers = csvData.get(0);
+
+            for (String[] record : csvData) {
+                GenericRecord avroRecord = createAvroRecord(record, headers, avroSchema, currentDate, currentTimestamp);
+                writer.write(avroRecord);
+            }
+
+            log.info("Parquet file written successfully. File: {}", fileName);
+        }
+
+        return parquetFile;
     }
 
     // Helper method to set up ParquetWriter
@@ -128,9 +182,29 @@ public class SnapshotServiceImpl implements SnapshotService {
                     .build(), RequestBody.fromFile(parquetFile));
 
             log.info("Parquet file uploaded successfully to S3: {}/{}", destinationBucketName, destinationFileKey);
+            deleteSysParquetFile(tempFileName);
         } catch (SdkClientException e) {
             log.error("Error uploading Parquet file to S3: {}", e.getMessage(), e);
             throw new RuntimeException("Error uploading Parquet file to S3: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public void deleteSysParquetFile(String parquetFileName) {
+        log.debug("Deleting temporary Parquet file: {}", parquetFileName);
+        File localParquetFile = new File(parquetFileName);
+        File localCrcFile = new File("." + parquetFileName + ".crc");
+
+        if (localParquetFile.exists() && localParquetFile.delete()) {
+            log.info("Parquet file deleted successfully: {}", parquetFileName);
+        } else {
+            log.warn("Parquet file not found or could not be deleted: {}", parquetFileName);
+        }
+
+        if (localCrcFile.exists() && localCrcFile.delete()) {
+            log.info(".crc file deleted successfully: {}", localCrcFile.getName());
+        } else {
+            log.warn(".crc file not found or could not be deleted: {}", localCrcFile.getName());
         }
     }
 }
