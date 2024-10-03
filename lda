@@ -1,18 +1,29 @@
-Sub RepeatRows()
-    Dim ws As Worksheet
-    Set ws = ThisWorkbook.Sheets(1) 'Assuming your data is in the first sheet
-    
-    Dim lastRow As Long
-    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row 'Find last row in the data
+@Override
+public List<String[]> readCsvFromS3(String bucketName, String key) throws IOException {
+    GetObjectRequest getObjectRequest = GetObjectRequest.builder()
+            .bucket(bucketName)
+            .key(key)
+            .build();
 
-    Dim repeatCount As Integer
-    repeatCount = 10 'Number of times to repeat
+    log.debug("Fetching CSV file from S3 bucket: {}, key: {}", bucketName, key);
 
-    Dim i As Long, j As Long
-    For i = lastRow To 1 Step -1
-        For j = 1 To repeatCount - 1
-            ws.Rows(i).Copy
-            ws.Rows(i + 1).Insert Shift:=xlDown
-        Next j
-    Next i
-End Sub
+    // Use CSVReader with quote handling for reading CSV data
+    try (ResponseInputStream<GetObjectResponse> objectStream = s3Client.getObject(getObjectRequest);
+         Reader reader = new InputStreamReader(objectStream);
+         CSVReader csvReader = new CSVReader(reader, 
+                            CSVParser.DEFAULT_SEPARATOR,   // Default separator (comma)
+                            CSVParser.DEFAULT_QUOTE_CHARACTER,  // Handle quotes correctly (default is ")
+                            CSVParser.DEFAULT_ESCAPE_CHARACTER,
+                            CSVParser.DEFAULT_STRICT_QUOTES)) {
+
+        List<String[]> csvData = csvReader.readAll();
+        log.debug("CSV data successfully read from S3. Number of rows: {}", csvData.size());
+        return csvData;
+    } catch (CsvException e) {
+        log.error("Error reading CSV data: {}", e.getMessage(), e);
+        throw new IOException("Error reading CSV data from S3", e);
+    } catch (SdkClientException e) {
+        log.error("Error fetching CSV data from S3: {}", e.getMessage(), e);
+        throw new IOException("Error fetching CSV data from S3", e);
+    }
+}
