@@ -1,29 +1,32 @@
-@Override
-public List<String[]> readCsvFromS3(String bucketName, String key) throws IOException {
-    GetObjectRequest getObjectRequest = GetObjectRequest.builder()
-            .bucket(bucketName)
-            .key(key)
-            .build();
+Performance Goals: 
 
-    log.debug("Fetching CSV file from S3 bucket: {}, key: {}", bucketName, key);
+1. Achievement Review
+•	Review of Goals: 
+o	
+•	Key Accomplishments: “One of my key accomplishments was developing utility for GBI snapshot one time loader, which migrated CSV historical data into parquet file for Account/Analysis/Party/Goals datasets with improved scalability”
+•	Challenges and Obstacles: “We faced some challenges with Legacy data pipeline due to regular connectivity/file transfer issues with MFTS api, but I worked closely with the team and reduced the failures by setting up the lambda Retry logic in step functions. And also changed route from FTS5 to FTS1 to reduce the failures.” 
+2. Skill Development and Learning
+•	New Skills Acquired: “This year, I took a course on AWS solution architect to stay up to date with industry trends, which helped during Legacy data pipeline/GBI snapshot load implementation”
+•	Areas for Improvement: “While I’ve improved in cloud infrastructure, I aim to strengthen my knowledge of full stack development with React/Spring boot java for advanced use cases.”
+3. Peer Feedback:
+•	“Received positive feedback on my ability to manage legacy data pipeline and streamline project timelines. Based on feedback, I improved communication with stakeholders by providing regular progress updates.”
+4. Teamwork and Collaboration
+•	Team Contributions: “Worked closely with team to ensure we delivered tasks on time, sharing responsibilities and offering support whenever needed. For example, helped in troubleshooting issues which occurred on our daily Legacy batch process.”
+5. Project and Task Management
+•	Efficiency and Time Management: “Successfully managed multiple tasks simultaneously, completing all on schedule by using Agile methodologies to break tasks into manageable sprints.”
 
-    // Use CSVReader with quote handling for reading CSV data
-    try (ResponseInputStream<GetObjectResponse> objectStream = s3Client.getObject(getObjectRequest);
-         Reader reader = new InputStreamReader(objectStream);
-         CSVReader csvReader = new CSVReader(reader, 
-                            CSVParser.DEFAULT_SEPARATOR,   // Default separator (comma)
-                            CSVParser.DEFAULT_QUOTE_CHARACTER,  // Handle quotes correctly (default is ")
-                            CSVParser.DEFAULT_ESCAPE_CHARACTER,
-                            CSVParser.DEFAULT_STRICT_QUOTES)) {
 
-        List<String[]> csvData = csvReader.readAll();
-        log.debug("CSV data successfully read from S3. Number of rows: {}", csvData.size());
-        return csvData;
-    } catch (CsvException e) {
-        log.error("Error reading CSV data: {}", e.getMessage(), e);
-        throw new IOException("Error reading CSV data from S3", e);
-    } catch (SdkClientException e) {
-        log.error("Error fetching CSV data from S3: {}", e.getMessage(), e);
-        throw new IOException("Error fetching CSV data from S3", e);
-    }
-}
+
+
+
+
+6. Future Career Goals
+•	Short-term and Long-term Career Plans: “In the short term, I’d like to focus on learning advanced fullstack React/java practices to ensure UpToDate with technology. Long-term, I see myself moving towards a more strategic role, like a Fullstack Engineering Manager, where I can lead larger initiatives across departments.”
+7. Work-Life Balance
+•	Reflection on Work-Life Balance: “Maintained a good work-life balance by delegating tasks and setting boundaries on after-hours work. However, I aim to ensure that I and the team continue to have a healthy balance, especially during peak periods.”
+8. Company Values and Culture Alignment
+•	Contribution to Culture: “I’ve contributed to fostering a collaborative environment by encouraging open communication and holding regular team retrospectives where we can reflect and improve.”
+•	Fit with Goals: “Our data engineering efforts directly support the bank’s digital transformation strategy, and I’m proud to have led initiatives that align with the overall goal”
+9.  Growth Opportunities
+•	 “I’m looking forward to expanding my role by collaborating with the full stack lead manager on cross-functional projects. This would allow me to gain more exposure to end-to-end development processes and contribute to broader strategic initiatives that span both data engineering and full stack development.”
+
